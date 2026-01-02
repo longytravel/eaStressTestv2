@@ -1,0 +1,13 @@
+{
+  "_comment": "MT5 Terminal Registry - Add your terminals here",
+  "_instructions": {
+    "path": "Full path to terminal64.exe",
+    "data_path": "AppData path where MT5 stores files (find in MT5: File > Open Data Folder)",
+    "default": "Set ONE terminal as default (true)"
+  },
+  "IC_Markets": {
+    "path": "C:/Users/User/Projects/terminal64.exe",
+    "data_path": "C:/Users/User/AppData/Roaming/MetaQuotes/Terminal/A42909ABCDDDD04324904B57BA9776B8",
+    "default": true
+  }
+}

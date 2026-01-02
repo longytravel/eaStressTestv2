@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ea_name}} - EA Stress Test Report</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <h1>{{ea_name}}</h1>
+                <div class="meta">{{symbol}} {{timeframe}} &bull; {{period_start}} to {{period_end}} &bull; {{terminal}}</div>
+            </div>
+            <div class="header-right">
+                <div class="score-badge">
+                    <div class="score-value">{{composite_score}}</div>
+                    <div class="score-label">Score /10</div>
+                </div>
+                <div class="status-badge status-{{status}}">
+                    {{status_label}}
+                </div>
+            </div>
+        </header>
+
+        <!-- Claude Analysis (LLM-generated) -->
+        {{#has_claude_analysis}}
+        <section class="claude-analysis">
+            <div class="claude-content">{{claude_analysis}}</div>
+        </section>
+        {{/has_claude_analysis}}
+
+        <!-- Core Metrics -->
+        <section class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-value">{{metrics.profit_factor}}</div>
+                <div class="metric-label">Profit Factor</div>
+                <div class="metric-status {{pf_status_class}}">{{pf_status}}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">{{metrics.max_drawdown_pct}}%</div>
+                <div class="metric-label">Max Drawdown</div>
+                <div class="metric-status {{dd_status_class}}">{{dd_status}}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">{{metrics.win_rate}}%</div>
+                <div class="metric-label">Win Rate</div>
+                <div class="metric-status metric-pass">{{metrics.total_trades}} trades</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">{{metrics.sharpe_ratio}}</div>
+                <div class="metric-label">Sharpe Ratio</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">{{metrics.sortino_ratio}}</div>
+                <div class="metric-label">Sortino Ratio</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">{{metrics.calmar_ratio}}</div>
+                <div class="metric-label">Calmar Ratio</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">${{metrics.expected_payoff}}</div>
+                <div class="metric-label">Expected Payoff</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">{{metrics.recovery_factor}}</div>
+                <div class="metric-label">Recovery Factor</div>
+            </div>
+        </section>
+
+        <!-- Charts: Equity & Monte Carlo -->
+        <section class="charts-row">
+            <div class="chart-card">
+                <h3>Equity Curve</h3>
+                <div class="chart-container">
+                    <canvas id="equityChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-card">
+                <h3>Monte Carlo Simulation</h3>
+                <div class="mc-stats">
+                    <div class="mc-stat">
+                        <div class="mc-stat-value" style="color: var(--accent-green)">{{monte_carlo.confidence}}%</div>
+                        <div class="mc-stat-label">Confidence</div>
+                    </div>
+                    <div class="mc-stat">
+                        <div class="mc-stat-value" style="color: var(--accent-red)">{{monte_carlo.ruin_probability}}%</div>
+                        <div class="mc-stat-label">Ruin Risk</div>
+                    </div>
+                </div>
+                <div style="font-size: 12px; color: var(--text-secondary);">
+                    <div>Median: ${{monte_carlo.median_profit}}</div>
+                    <div>Worst 5%: ${{monte_carlo.worst_case_5pct}}</div>
+                    <div>Best 95%: ${{monte_carlo.best_case_95pct}}</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Gates -->
+        <section class="gates-section">
+            <h3>Gate Results</h3>
+            <div class="gates-grid">
+                {{#gates_list}}
+                <div class="gate-item {{gate_class}}">
+                    <div class="gate-icon">{{gate_icon}}</div>
+                    <div class="gate-info">
+                        <div class="gate-name">{{name}}</div>
+                        <div class="gate-value">{{value}} <span class="gate-threshold">{{operator}} {{threshold}}</span></div>
+                    </div>
+                </div>
+                {{/gates_list}}
+            </div>
+        </section>
+
+
+        <!-- Optimization Analysis -->
+        {{#has_optimization}}
+        <section class="optimization-section">
+            <h3>Optimization Analysis</h3>
+
+            <!-- Summary Stats -->
+            <div class="opt-summary">
+                <div class="opt-stat">
+                    <div class="opt-stat-value">{{opt_total_passes}}</div>
+                    <div class="opt-stat-label">Total Passes</div>
+                </div>
+                <div class="opt-stat">
+                    <div class="opt-stat-value">{{opt_valid_count}}</div>
+                    <div class="opt-stat-label">Valid (50+ trades)</div>
+                </div>
+                <div class="opt-stat">
+                    <div class="opt-stat-value">{{opt_consistent_count}}</div>
+                    <div class="opt-stat-label">Consistent (Fwd+Back+)</div>
+                </div>
+                <div class="opt-stat">
+                    <div class="opt-stat-value">{{opt_rejected_low_trades}}</div>
+                    <div class="opt-stat-label">Rejected (low trades)</div>
+                </div>
+            </div>
+
+            <!-- Pass Browser -->
+            <h4>Valid Passes (Sorted by Composite Score)</h4>
+            <table class="data-table pass-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Trades</th>
+                        <th>Profit</th>
+                        <th>PF</th>
+                        <th>DD%</th>
+                        <th>Sharpe</th>
+                        <th class="col-fwd">Forward</th>
+                        <th class="col-back">Back</th>
+                        <th>Score</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{#valid_passes}}
+                    <tr class="{{row_class}}">
+                        <td>{{rank}}</td>
+                        <td class="num">{{total_trades}}</td>
+                        <td class="num">{{profit}}</td>
+                        <td class="num">{{profit_factor}}</td>
+                        <td class="num">{{max_drawdown_pct}}%</td>
+                        <td class="num">{{sharpe_ratio}}</td>
+                        <td class="num {{fwd_class}}">{{forward_result}}</td>
+                        <td class="num {{back_class}}">{{back_result}}</td>
+                        <td class="num">{{composite_score}}</td>
+                        <td class="status-cell">{{consistency_icon}}</td>
+                    </tr>
+                    {{/valid_passes}}
+                </tbody>
+            </table>
+
+            <!-- Recommended Pass -->
+            {{#has_recommended}}
+            <div class="recommended-pass">
+                <h4>Recommended Pass (Best Consistent)</h4>
+                <div class="recommended-grid">
+                    <div class="recommended-metric">
+                        <div class="recommended-label">Pass #</div>
+                        <div class="recommended-value">{{recommended.pass_number}}</div>
+                    </div>
+                    <div class="recommended-metric">
+                        <div class="recommended-label">Trades</div>
+                        <div class="recommended-value">{{recommended.total_trades}}</div>
+                    </div>
+                    <div class="recommended-metric">
+                        <div class="recommended-label">Profit</div>
+                        <div class="recommended-value">{{recommended.profit}}</div>
+                    </div>
+                    <div class="recommended-metric">
+                        <div class="recommended-label">Forward</div>
+                        <div class="recommended-value positive">+{{recommended.forward_result}}</div>
+                    </div>
+                    <div class="recommended-metric">
+                        <div class="recommended-label">Back</div>
+                        <div class="recommended-value positive">+{{recommended.back_result}}</div>
+                    </div>
+                </div>
+                <h5>Parameters:</h5>
+                <div class="params-grid">
+                    {{#recommended.params}}
+                    <div class="param-item-small">
+                        <span class="param-name-small">{{name}}:</span>
+                        <span class="param-value-small">{{value}}</span>
+                    </div>
+                    {{/recommended.params}}
+                </div>
+            </div>
+            {{/has_recommended}}
+        </section>
+        {{/has_optimization}}
+
+        <!-- Top Passes Table (Legacy) -->
+        {{#has_top_passes}}
+        <section class="table-section">
+            <h3>Top Optimization Passes</h3>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Profit</th>
+                        <th>PF</th>
+                        <th>DD%</th>
+                        <th>Trades</th>
+                        <th>Sharpe</th>
+                        <th>Score</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{#top_passes}}
+                    <tr>
+                        <td>{{rank}}</td>
+                        <td class="num">${{profit}}</td>
+                        <td class="num">{{profit_factor}}</td>
+                        <td class="num">{{max_drawdown_pct}}%</td>
+                        <td class="num">{{total_trades}}</td>
+                        <td class="num">{{sharpe_ratio}}</td>
+                        <td class="num">{{score}}</td>
+                    </tr>
+                    {{/top_passes}}
+                </tbody>
+            </table>
+        </section>
+        {{/has_top_passes}}
+
+        <!-- Footer -->
+        <footer style="text-align: center; padding: 24px; color: var(--text-muted); font-size: 12px;">
+            Generated {{generated_at}} &bull; EA Stress Test System v2
+        </footer>
+    </div>
+
+    <script>
+        // Equity Chart
+        const equityCtx = document.getElementById('equityChart').getContext('2d');
+        const equityData = {
+            labels: {{equity_dates_json}},
+            datasets: [{
+                label: 'Equity',
+                data: {{equity_values_json}},
+                borderColor: '#0d6efd',
+                backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: 0,
+                borderWidth: 2
+            }]
+        };
+
+        // Add vertical line for in-sample/forward split
+        const splitIndex = {{in_sample_end_index}};
+
+        new Chart(equityCtx, {
+            type: 'line',
+            data: equityData,
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    annotation: {
+                        annotations: {
+                            splitLine: {
+                                type: 'line',
+                                xMin: splitIndex,
+                                xMax: splitIndex,
+                                borderColor: '#6c757d',
+                                borderWidth: 2,
+                                borderDash: [5, 5],
+                                label: {
+                                    display: true,
+                                    content: 'Forward Test →',
+                                    position: 'start'
+                                }
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { maxTicksLimit: 8 }
+                    },
+                    y: {
+                        grid: { color: '#e9ecef' },
+                        ticks: {
+                            callback: function(value) {
+                                return '$' + value.toLocaleString();
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ea_name}} - EA Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
+    <style>
+        :root {
+            --bg: #f8f9fa;
+            --panel: #ffffff;
+            --border: #dee2e6;
+            --text: #212529;
+            --text-muted: #6c757d;
+            --accent: #0d6efd;
+            --good: #198754;
+            --warn: #ffc107;
+            --bad: #dc3545;
+            --equity-insample: #0d6efd;
+            --equity-forward: #198754;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .header-meta {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+        }
+
+        .tag.good { color: var(--good); border-color: var(--good); }
+        .tag.bad { color: var(--bad); border-color: var(--bad); }
+
+        /* Grid Layout */
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .grid-full { grid-column: 1 / -1; }
+
+        @media (max-width: 1024px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+
+        /* Cards */
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .card-title {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* Toggle Button */
+        .toggle-btn {
+            padding: 6px 12px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: var(--panel);
+            cursor: pointer;
+            font-size: 0.75rem;
+            transition: all 0.2s;
+        }
+
+        .toggle-btn:hover { background: var(--bg); }
+        .toggle-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+        /* Claude Analysis */
+        .claude-analysis {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e6edf3;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+
+        .claude-analysis.hidden { display: none; }
+
+        .claude-analysis h3 {
+            color: #ffc107;
+            font-size: 0.875rem;
+            margin-bottom: 12px;
+        }
+
+        .claude-content {
+            font-size: 0.875rem;
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+
+        /* Pass Table */
+        .pass-table-container {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+        }
+
+        .pass-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.75rem;
+        }
+
+        .pass-table th,
+        .pass-table td {
+            padding: 8px 10px;
+            text-align: right;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .pass-table th {
+            background: var(--bg);
+            font-weight: 600;
+            color: var(--text-muted);
+            position: sticky;
+            top: 0;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .pass-table th:hover { background: #e9ecef; }
+
+        .pass-table td:first-child,
+        .pass-table th:first-child { text-align: left; }
+
+        .pass-table tbody tr {
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .pass-table tbody tr:hover { background: #f8f9fa; }
+        .pass-table tbody tr.selected { background: rgba(13, 110, 253, 0.1); }
+
+        .pass-table .positive { color: var(--good); }
+        .pass-table .negative { color: var(--bad); }
+
+        /* KPI Grid */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 12px;
+        }
+
+        .kpi-item {
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            text-align: center;
+        }
+
+        .kpi-value {
+            font-size: 1.25rem;
+            font-weight: 700;
+        }
+
+        .kpi-label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            margin-top: 4px;
+        }
+
+        /* Chart Container */
+        .chart-container {
+            height: 300px;
+            position: relative;
+        }
+
+        .chart-container canvas {
+            max-height: 100%;
+        }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .control-label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+        }
+
+        .control-input {
+            padding: 6px 10px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 0.75rem;
+            background: var(--panel);
+        }
+
+        select.control-input {
+            cursor: pointer;
+        }
+
+        /* Action Buttons */
+        .action-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .action-btn.primary {
+            background: var(--accent);
+            color: white;
+        }
+
+        .action-btn.primary:hover { background: #0b5ed7; }
+
+        .action-btn.secondary {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            color: var(--text);
+        }
+
+        .action-btn.secondary:hover { background: var(--bg); }
+
+        /* Filters */
+        .filters {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            padding: 12px;
+            background: var(--bg);
+            border-radius: 6px;
+            margin-bottom: 12px;
+        }
+
+        /* Stats Row */
+        .stats-row {
+            display: flex;
+            gap: 24px;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 12px;
+            font-size: 0.875rem;
+        }
+
+        .stats-row .stat {
+            display: flex;
+            gap: 6px;
+        }
+
+        .stats-row .stat-label { color: var(--text-muted); }
+        .stats-row .stat-value { font-weight: 600; }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 24px;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            margin-top: 24px;
+        }
+
+        /* Checkbox Toggle */
+        .checkbox-toggle {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.75rem;
+        }
+
+        .checkbox-toggle input[type="checkbox"] {
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div>
+                <h1 id="eaName">Loading...</h1>
+                <div class="header-meta" id="headerMeta"></div>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button class="toggle-btn active" id="toggleInsights" onclick="toggleInsights()">
+                    Claude Insights
+                </button>
+                <button class="action-btn primary" id="downloadSet" onclick="downloadSetFile(selectedPass)">
+                    Download SET File
+                </button>
+            </div>
+        </header>
+
+        <!-- Claude Analysis (toggleable) -->
+        <section class="claude-analysis" id="claudeSection">
+            <h3>Claude Analysis</h3>
+            <div class="claude-content" id="claudeContent"></div>
+        </section>
+
+        <!-- Main Grid -->
+        <div class="grid">
+            <!-- Left: Pass Browser -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">Optimization Passes</span>
+                    <span class="tag" id="passCount">0 passes</span>
+                </div>
+
+                <div class="filters">
+                    <div class="control-group">
+                        <span class="control-label">Min Trades</span>
+                        <input type="number" class="control-input" id="filterMinTrades" placeholder="50" style="width: 80px;">
+                    </div>
+                    <div class="control-group">
+                        <span class="control-label">Min PF</span>
+                        <input type="number" class="control-input" id="filterMinPF" placeholder="1.0" step="0.1" style="width: 80px;">
+                    </div>
+                    <div class="control-group">
+                        <span class="control-label">Max DD%</span>
+                        <input type="number" class="control-input" id="filterMaxDD" placeholder="30" style="width: 80px;">
+                    </div>
+                    <div class="checkbox-toggle">
+                        <input type="checkbox" id="filterConsistent">
+                        <label for="filterConsistent">Consistent only</label>
+                    </div>
+                    <button class="action-btn secondary" onclick="resetFilters()">Reset</button>
+                </div>
+
+                <div class="pass-table-container">
+                    <table class="pass-table" id="passTable">
+                        <thead>
+                            <tr>
+                                <th data-sort="pass">Pass</th>
+                                <th data-sort="trades">Trades</th>
+                                <th data-sort="profit">Profit</th>
+                                <th data-sort="pf">PF</th>
+                                <th data-sort="dd">DD%</th>
+                                <th data-sort="insample">IS</th>
+                                <th data-sort="forward">FWD</th>
+                            </tr>
+                        </thead>
+                        <tbody id="passTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Right: Selected Pass Details -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">Selected Pass: <span id="selectedPassNum">-</span></span>
+                </div>
+
+                <div class="kpi-grid" id="kpiGrid"></div>
+
+                <div style="margin-top: 16px;">
+                    <h4 style="font-size: 0.875rem; margin-bottom: 8px;">Monte Carlo</h4>
+                    <div class="kpi-grid" id="mcGrid"></div>
+                </div>
+            </div>
+
+            <!-- Equity Chart -->
+            <div class="card grid-full">
+                <div class="card-header">
+                    <span class="card-title">Equity Curve</span>
+                    <div style="display: flex; gap: 12px; align-items: center;">
+                        <span class="tag" style="background: var(--equity-insample); color: white;">In-Sample</span>
+                        <span class="tag" style="background: var(--equity-forward); color: white;">Forward</span>
+                        <div class="checkbox-toggle">
+                            <input type="checkbox" id="showSplit" checked onchange="updateEquityChart()">
+                            <label for="showSplit">Show split line</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="chart-container" style="position: relative;">
+                    <canvas id="equityChart"></canvas>
+                    <div id="equityNoData" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; color: var(--text-muted);">
+                        <div style="font-size: 1.2rem; margin-bottom: 8px;">📊 No equity curve data</div>
+                        <div style="font-size: 0.85rem;">This pass was not backtested. Only top 10 passes have detailed equity curves.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Scatter Plot -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">In-Sample vs Forward</span>
+                </div>
+                <div class="chart-container">
+                    <canvas id="scatterChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Optimization Summary -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">Optimization Summary</span>
+                </div>
+                <div class="stats-row" id="optSummary"></div>
+                <div id="optInsights" style="font-size: 0.8rem; color: var(--text-muted);"></div>
+            </div>
+        </div>
+
+        <footer class="footer">
+            EA Stress Test System v2 | Generated <span id="genDate"></span>
+        </footer>
+    </div>
+
+    <script>
+        // DATA will be embedded here by the generator
+        const DATA = {{DATA_JSON}};
+
+        let selectedPass = DATA.selected_pass || (DATA.pass_list && DATA.pass_list[0]);
+        let equityChart = null;
+        let scatterChart = null;
+        let currentSort = { key: 'profit', desc: true };
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            initHeader();
+            initClaudeSection();
+            initPassTable();
+            initCharts();
+            initOptSummary();
+
+            if (selectedPass) {
+                selectPass(selectedPass);
+            }
+
+            // Set up filter listeners
+            document.getElementById('filterMinTrades').addEventListener('input', filterPasses);
+            document.getElementById('filterMinPF').addEventListener('input', filterPasses);
+            document.getElementById('filterMaxDD').addEventListener('input', filterPasses);
+            document.getElementById('filterConsistent').addEventListener('change', filterPasses);
+        });
+
+        function initHeader() {
+            document.getElementById('eaName').textContent = DATA.ea_name || 'Unknown EA';
+            document.getElementById('headerMeta').innerHTML = `
+                <span class="tag">${DATA.symbol || ''}</span>
+                <span class="tag">${DATA.timeframe || ''}</span>
+                <span class="tag">${DATA.from_date} to ${DATA.to_date}</span>
+                <span class="tag">Forward: ${DATA.forward_date}</span>
+            `;
+            document.getElementById('genDate').textContent = new Date().toLocaleString();
+        }
+
+        function initClaudeSection() {
+            const analysis = DATA.claude_analysis;
+            if (analysis && (analysis.verdict || analysis.summary || typeof analysis === 'string')) {
+                const content = typeof analysis === 'string' ? analysis :
+                    (analysis.summary || analysis.verdict || JSON.stringify(analysis, null, 2));
+                document.getElementById('claudeContent').textContent = content;
+            } else {
+                document.getElementById('claudeSection').classList.add('hidden');
+                document.getElementById('toggleInsights').style.display = 'none';
+            }
+        }
+
+        function toggleInsights() {
+            const section = document.getElementById('claudeSection');
+            const btn = document.getElementById('toggleInsights');
+            section.classList.toggle('hidden');
+            btn.classList.toggle('active');
+        }
+
+        function initPassTable() {
+            const passes = DATA.passes || {};
+            const tbody = document.getElementById('passTableBody');
+
+            // Sort header click handlers
+            document.querySelectorAll('#passTable th').forEach(th => {
+                th.addEventListener('click', () => sortTable(th.dataset.sort));
+            });
+
+            renderPassTable();
+        }
+
+        function renderPassTable() {
+            const passes = DATA.passes || {};
+            const tbody = document.getElementById('passTableBody');
+            tbody.innerHTML = '';
+
+            // Get filter values
+            const minTrades = parseInt(document.getElementById('filterMinTrades').value) || 0;
+            const minPF = parseFloat(document.getElementById('filterMinPF').value) || 0;
+            const maxDD = parseFloat(document.getElementById('filterMaxDD').value) || 100;
+            const consistentOnly = document.getElementById('filterConsistent').checked;
+
+            // Convert to array and filter
+            let passArray = Object.entries(passes).map(([num, data]) => ({
+                num: parseInt(num),
+                ...data
+            }));
+
+            passArray = passArray.filter(p => {
+                const bt = p.bt || {};
+                const eq = p.equity || {};
+                const trades = bt.total_trades || 0;
+                const pf = bt.profit_factor || 0;
+                const dd = bt.max_drawdown_pct || 0;
+                const isProfit = (eq.in_sample?.length > 0 || p.opt?.in_profit > 0);
+                const fwdProfit = (eq.forward?.length > 0 || p.opt?.fwd_profit > 0);
+                const isConsistent = p.opt?.in_profit > 0 && p.opt?.fwd_profit > 0;
+
+                if (trades < minTrades) return false;
+                if (pf < minPF) return false;
+                if (dd > maxDD) return false;
+                if (consistentOnly && !isConsistent) return false;
+                return true;
+            });
+
+            // Sort
+            passArray.sort((a, b) => {
+                let aVal, bVal;
+                const bt_a = a.bt || {};
+                const bt_b = b.bt || {};
+                const opt_a = a.opt || {};
+                const opt_b = b.opt || {};
+
+                switch (currentSort.key) {
+                    case 'pass': aVal = a.num; bVal = b.num; break;
+                    case 'trades': aVal = bt_a.total_trades || 0; bVal = bt_b.total_trades || 0; break;
+                    case 'profit': aVal = bt_a.net_profit || 0; bVal = bt_b.net_profit || 0; break;
+                    case 'pf': aVal = bt_a.profit_factor || 0; bVal = bt_b.profit_factor || 0; break;
+                    case 'dd': aVal = bt_a.max_drawdown_pct || 0; bVal = bt_b.max_drawdown_pct || 0; break;
+                    case 'insample': aVal = opt_a.in_profit || 0; bVal = opt_b.in_profit || 0; break;
+                    case 'forward': aVal = opt_a.fwd_profit || 0; bVal = opt_b.fwd_profit || 0; break;
+                    default: aVal = 0; bVal = 0;
+                }
+                return currentSort.desc ? bVal - aVal : aVal - bVal;
+            });
+
+            // Render
+            passArray.forEach(p => {
+                const bt = p.bt || {};
+                const opt = p.opt || {};
+                const tr = document.createElement('tr');
+                tr.dataset.pass = p.num;
+                if (p.num === selectedPass) tr.classList.add('selected');
+
+                const inClass = opt.in_profit > 0 ? 'positive' : 'negative';
+                const fwdClass = opt.fwd_profit > 0 ? 'positive' : 'negative';
+
+                tr.innerHTML = `
+                    <td><strong>${p.num}</strong></td>
+                    <td>${bt.total_trades || '-'}</td>
+                    <td>${formatMoney(bt.net_profit)}</td>
+                    <td>${(bt.profit_factor || 0).toFixed(2)}</td>
+                    <td>${(bt.max_drawdown_pct || 0).toFixed(1)}%</td>
+                    <td class="${inClass}">${formatNum(opt.in_profit)}</td>
+                    <td class="${fwdClass}">${formatNum(opt.fwd_profit)}</td>
+                `;
+
+                tr.addEventListener('click', () => selectPass(p.num));
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('passCount').textContent = `${passArray.length} passes`;
+        }
+
+        function sortTable(key) {
+            if (currentSort.key === key) {
+                currentSort.desc = !currentSort.desc;
+            } else {
+                currentSort.key = key;
+                currentSort.desc = true;
+            }
+            renderPassTable();
+        }
+
+        function filterPasses() {
+            renderPassTable();
+        }
+
+        function resetFilters() {
+            document.getElementById('filterMinTrades').value = '';
+            document.getElementById('filterMinPF').value = '';
+            document.getElementById('filterMaxDD').value = '';
+            document.getElementById('filterConsistent').checked = false;
+            renderPassTable();
+        }
+
+        function selectPass(passNum) {
+            selectedPass = passNum;
+
+            // Update table selection
+            document.querySelectorAll('#passTableBody tr').forEach(tr => {
+                tr.classList.toggle('selected', parseInt(tr.dataset.pass) === passNum);
+            });
+
+            document.getElementById('selectedPassNum').textContent = passNum;
+
+            const pass = DATA.passes[passNum];
+            if (!pass) return;
+
+            updateKPIs(pass);
+            updateEquityChart();
+            updateScatterHighlight(passNum);
+        }
+
+        function updateKPIs(pass) {
+            const bt = pass.bt || {};
+            const mc = pass.monte_carlo || {};
+            const split = bt.split || {};
+
+            document.getElementById('kpiGrid').innerHTML = `
+                <div class="kpi-item">
+                    <div class="kpi-value">${formatMoney(bt.net_profit)}</div>
+                    <div class="kpi-label">Net Profit</div>
+                </div>
+                <div class="kpi-item">
+                    <div class="kpi-value">${(bt.profit_factor || 0).toFixed(2)}</div>
+                    <div class="kpi-label">Profit Factor</div>
+                </div>
+                <div class="kpi-item">
+                    <div class="kpi-value">${(bt.max_drawdown_pct || 0).toFixed(1)}%</div>
+                    <div class="kpi-label">Max Drawdown</div>
+                </div>
+                <div class="kpi-item">
+                    <div class="kpi-value">${bt.total_trades || 0}</div>
+                    <div class="kpi-label">Total Trades</div>
+                </div>
+                <div class="kpi-item">
+                    <div class="kpi-value">${(bt.sharpe_ratio || 0).toFixed(2)}</div>
+                    <div class="kpi-label">Sharpe</div>
+                </div>
+                <div class="kpi-item">
+                    <div class="kpi-value">${(bt.win_rate || 0).toFixed(1)}%</div>
+                    <div class="kpi-label">Win Rate</div>
+                </div>
+            `;
+
+            document.getElementById('mcGrid').innerHTML = `
+                <div class="kpi-item">
+                    <div class="kpi-value" style="color: ${mc.confidence >= 70 ? 'var(--good)' : 'var(--bad)'}">
+                        ${(mc.confidence || 0).toFixed(1)}%
+                    </div>
+                    <div class="kpi-label">Confidence</div>
+                </div>
+                <div class="kpi-item">
+                    <div class="kpi-value" style="color: ${mc.ruin_probability <= 5 ? 'var(--good)' : 'var(--bad)'}">
+                        ${(mc.ruin_probability || 0).toFixed(1)}%
+                    </div>
+                    <div class="kpi-label">Ruin Risk</div>
+                </div>
+                <div class="kpi-item">
+                    <div class="kpi-value">${formatMoney(mc.median_profit)}</div>
+                    <div class="kpi-label">Median</div>
+                </div>
+                <div class="kpi-item">
+                    <div class="kpi-value">${formatMoney(mc.worst_5pct)}</div>
+                    <div class="kpi-label">Worst 5%</div>
+                </div>
+            `;
+        }
+
+        function initCharts() {
+            // Equity Chart
+            const equityCtx = document.getElementById('equityChart').getContext('2d');
+            equityChart = new Chart(equityCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: []
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            title: { display: true, text: 'Trade #' }
+                        },
+                        y: {
+                            display: true,
+                            title: { display: true, text: 'Equity' }
+                        }
+                    }
+                }
+            });
+
+            // Scatter Chart
+            const scatterCtx = document.getElementById('scatterChart').getContext('2d');
+            scatterChart = new Chart(scatterCtx, {
+                type: 'scatter',
+                data: {
+                    datasets: [{
+                        label: 'Passes',
+                        data: (DATA.optimization?.scatter || []).map(p => ({ x: p.x, y: p.y })),
+                        backgroundColor: 'rgba(13, 110, 253, 0.5)',
+                        pointRadius: 4
+                    }, {
+                        label: 'Selected',
+                        data: [],
+                        backgroundColor: 'var(--good)',
+                        pointRadius: 8,
+                        pointStyle: 'star'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: {
+                            title: { display: true, text: 'In-Sample Profit' }
+                        },
+                        y: {
+                            title: { display: true, text: 'Forward Profit' }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateEquityChart() {
+            if (!selectedPass || !equityChart) return;
+
+            const pass = DATA.passes[selectedPass];
+            if (!pass) return;
+
+            const eq = pass.equity || {};
+            const inSample = eq.in_sample || [];
+            const forward = eq.forward || [];
+
+            // Show/hide "no data" message
+            const noDataEl = document.getElementById('equityNoData');
+            const hasData = inSample.length > 0 || forward.length > 0;
+            noDataEl.style.display = hasData ? 'none' : 'block';
+
+            // Build combined data
+            const labels = [];
+            const isData = [];
+            const fwdData = [];
+
+            inSample.forEach((v, i) => {
+                labels.push(i + 1);
+                isData.push(v);
+                fwdData.push(null);
+            });
+
+            forward.forEach((v, i) => {
+                labels.push(inSample.length + i + 1);
+                isData.push(null);
+                fwdData.push(v);
+            });
+
+            equityChart.data.labels = labels;
+            equityChart.data.datasets = [
+                {
+                    label: 'In-Sample',
+                    data: isData,
+                    borderColor: 'var(--equity-insample)',
+                    backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 0
+                },
+                {
+                    label: 'Forward',
+                    data: fwdData,
+                    borderColor: 'var(--equity-forward)',
+                    backgroundColor: 'rgba(25, 135, 84, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 0
+                }
+            ];
+
+            // Add split line annotation
+            if (document.getElementById('showSplit').checked && inSample.length > 0) {
+                equityChart.options.plugins.annotation = {
+                    annotations: {
+                        splitLine: {
+                            type: 'line',
+                            xMin: inSample.length,
+                            xMax: inSample.length,
+                            borderColor: '#6c757d',
+                            borderWidth: 2,
+                            borderDash: [5, 5],
+                            label: {
+                                display: true,
+                                content: 'Forward',
+                                position: 'start'
+                            }
+                        }
+                    }
+                };
+            } else {
+                equityChart.options.plugins.annotation = {};
+            }
+
+            equityChart.update();
+        }
+
+        function updateScatterHighlight(passNum) {
+            if (!scatterChart) return;
+
+            const pass = DATA.passes[passNum];
+            if (!pass) return;
+
+            const opt = pass.opt || {};
+            scatterChart.data.datasets[1].data = [{ x: opt.in_profit || 0, y: opt.fwd_profit || 0 }];
+            scatterChart.update();
+        }
+
+        function initOptSummary() {
+            const opt = DATA.optimization || {};
+
+            document.getElementById('optSummary').innerHTML = `
+                <div class="stat">
+                    <span class="stat-label">Total Passes:</span>
+                    <span class="stat-value">${(opt.total_passes || 0).toLocaleString()}</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Valid:</span>
+                    <span class="stat-value">${(opt.valid_passes || 0).toLocaleString()}</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Consistent:</span>
+                    <span class="stat-value">${(opt.consistent_passes || 0).toLocaleString()}</span>
+                </div>
+            `;
+
+            const insights = opt.insights || [];
+            if (insights.length > 0) {
+                document.getElementById('optInsights').innerHTML = insights.map(i => `<p>${i}</p>`).join('');
+            }
+        }
+
+        // Utility functions
+        function formatMoney(value) {
+            if (value == null) return '-';
+            const sign = value >= 0 ? '' : '-';
+            return sign + '£' + Math.abs(value).toFixed(0);
+        }
+
+        function formatNum(value) {
+            if (value == null) return '-';
+            return value >= 0 ? '+' + value.toFixed(0) : value.toFixed(0);
+        }
+
+        // SET file download
+        function downloadSetFile(passNum) {
+            const pass = DATA.passes[passNum];
+            if (!pass) {
+                alert('No pass selected');
+                return;
+            }
+
+            const params = pass.parameters || {};
+            const lines = [
+                '; MT5 Settings File',
+                '; EA: ' + DATA.ea_name,
+                '; Symbol: ' + DATA.symbol,
+                '; Timeframe: ' + DATA.timeframe,
+                '; Pass: ' + passNum,
+                '; Generated: ' + new Date().toISOString(),
+                ''
+            ];
+
+            for (const [name, value] of Object.entries(params)) {
+                if (['Pass', 'Forward Result', 'Back Result', 'Custom', 'Result'].includes(name)) {
+                    continue;
+                }
+
+                let formattedValue = value;
+                if (typeof value === 'boolean') {
+                    formattedValue = value ? 'true' : 'false';
+                } else if (typeof value === 'number') {
+                    formattedValue = Number.isInteger(value) ? value.toString() : value.toFixed(6).replace(/\.?0+$/, '');
+                }
+
+                lines.push(name + '=' + formattedValue);
+            }
+
+            const content = lines.join('\n');
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = DATA.ea_name + '_' + DATA.symbol + '_Pass' + passNum + '.set';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>

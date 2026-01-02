@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EA Stress Test - Leaderboard</title>
+    <style>
+        :root {
+            --bg: #f8f9fa;
+            --panel: #ffffff;
+            --border: #dee2e6;
+            --text: #212529;
+            --text-muted: #6c757d;
+            --accent: #0d6efd;
+            --good: #198754;
+            --warn: #ffc107;
+            --bad: #dc3545;
+            --forward: #0d6efd;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .header-meta {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            color: var(--text-muted);
+            font-size: 0.875rem;
+        }
+
+        /* Summary Cards */
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .summary-card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            text-align: center;
+        }
+
+        .summary-card .value {
+            font-size: 2rem;
+            font-weight: 700;
+        }
+
+        .summary-card .label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .summary-card.consistent .value { color: var(--good); }
+        .summary-card.forward .value { color: var(--forward); }
+        .summary-card.back .value { color: var(--warn); }
+
+        /* Quick Stats Row */
+        .quick-stats {
+            display: flex;
+            gap: 24px;
+            padding: 12px 16px;
+            background: linear-gradient(90deg, #1a1a2e 0%, #16213e 100%);
+            color: white;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            font-size: 0.8125rem;
+            flex-wrap: wrap;
+        }
+
+        .quick-stats .stat {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .quick-stats .stat-label { opacity: 0.7; }
+        .quick-stats .stat-value { font-weight: 600; }
+
+        /* Filter Bar */
+        .filter-bar {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            padding: 12px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 16px;
+            align-items: center;
+        }
+
+        .filter-btn {
+            padding: 6px 14px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: var(--panel);
+            cursor: pointer;
+            font-size: 0.75rem;
+            transition: all 0.2s;
+        }
+
+        .filter-btn:hover { background: var(--bg); }
+        .filter-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+        .search-input {
+            flex: 1;
+            min-width: 200px;
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 0.875rem;
+        }
+
+        /* Main Table */
+        .table-container {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow-x: auto;
+        }
+
+        .leaderboard-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8125rem;
+        }
+
+        .leaderboard-table th,
+        .leaderboard-table td {
+            padding: 10px 12px;
+            text-align: right;
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+        }
+
+        .leaderboard-table th {
+            background: var(--bg);
+            font-weight: 600;
+            color: var(--text-muted);
+            position: sticky;
+            top: 0;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .leaderboard-table th:hover { background: #e9ecef; }
+        .leaderboard-table th.sorted { color: var(--accent); }
+        .leaderboard-table th .sort-icon { margin-left: 4px; font-size: 0.7rem; }
+
+        .leaderboard-table td:first-child,
+        .leaderboard-table th:first-child { text-align: center; width: 50px; }
+        .leaderboard-table td:nth-child(2),
+        .leaderboard-table th:nth-child(2) { text-align: left; }
+
+        .leaderboard-table tbody tr {
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .leaderboard-table tbody tr:hover { background: #f8f9fa; }
+
+        /* EA Name Cell */
+        .ea-cell {
+            display: flex;
+            flex-direction: column;
+        }
+        .ea-name { font-weight: 600; }
+        .ea-meta { font-size: 0.7rem; color: var(--text-muted); }
+
+        /* Status Badge */
+        .status-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 500;
+        }
+
+        .status-badge.consistent { background: rgba(25, 135, 84, 0.1); color: var(--good); }
+        .status-badge.forward_only { background: rgba(13, 110, 253, 0.1); color: var(--forward); }
+        .status-badge.back_only { background: rgba(255, 193, 7, 0.1); color: #997404; }
+        .status-badge.mixed { background: rgba(108, 117, 125, 0.1); color: var(--text-muted); }
+
+        .positive { color: var(--good); }
+        .negative { color: var(--bad); }
+
+        /* Score Cell */
+        .score-cell {
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+
+        /* Empty State */
+        .empty-state {
+            padding: 48px;
+            text-align: center;
+            color: var(--text-muted);
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 24px;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            margin-top: 24px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div>
+                <h1>EA Stress Test Leaderboard</h1>
+                <div class="header-meta">
+                    <span id="summaryText"></span>
+                    <span>|</span>
+                    <span id="lastUpdated"></span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Summary Cards -->
+        <div class="summary-grid">
+            <div class="summary-card">
+                <div class="value" id="totalCount">0</div>
+                <div class="label">Total Passes</div>
+            </div>
+            <div class="summary-card">
+                <div class="value" id="workflowCount">0</div>
+                <div class="label">Workflows</div>
+            </div>
+            <div class="summary-card consistent">
+                <div class="value" id="consistentCount">0</div>
+                <div class="label">Consistent</div>
+            </div>
+            <div class="summary-card forward">
+                <div class="value" id="forwardCount">0</div>
+                <div class="label">Forward Only</div>
+            </div>
+            <div class="summary-card back">
+                <div class="value" id="backCount">0</div>
+                <div class="label">Back Only</div>
+            </div>
+        </div>
+
+        <!-- Quick Stats -->
+        <div class="quick-stats">
+            <div class="stat">
+                <span class="stat-label">Avg Score:</span>
+                <span class="stat-value" id="avgScore">-</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">Avg PF:</span>
+                <span class="stat-value" id="avgPF">-</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">Avg DD:</span>
+                <span class="stat-value" id="avgDD">-</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">Avg Sharpe:</span>
+                <span class="stat-value" id="avgSharpe">-</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">Best Profit:</span>
+                <span class="stat-value" id="bestProfit">-</span>
+            </div>
+        </div>
+
+        <!-- Filter Bar -->
+        <div class="filter-bar">
+            <button class="filter-btn active" data-filter="all">All</button>
+            <button class="filter-btn" data-filter="consistent">Consistent</button>
+            <button class="filter-btn" data-filter="forward_only">Forward Only</button>
+            <button class="filter-btn" data-filter="back_only">Back Only</button>
+            <input type="text" class="search-input" id="searchInput" placeholder="Search EA name...">
+        </div>
+
+        <!-- Leaderboard Table -->
+        <div class="table-container">
+            <table class="leaderboard-table" id="leaderboardTable">
+                <thead>
+                    <tr>
+                        <th data-sort="rank">#</th>
+                        <th data-sort="ea_name">EA / Pass</th>
+                        <th data-sort="status">Status</th>
+                        <th data-sort="score">Score</th>
+                        <th data-sort="profit">Profit</th>
+                        <th data-sort="pf">PF</th>
+                        <th data-sort="dd">DD%</th>
+                        <th data-sort="sharpe">Sharpe</th>
+                        <th data-sort="trades">Trades</th>
+                        <th data-sort="forward">FWD</th>
+                        <th data-sort="back">Back</th>
+                    </tr>
+                </thead>
+                <tbody id="leaderboardBody"></tbody>
+            </table>
+            <div class="empty-state" id="emptyState" style="display: none;">
+                No passes match your filters.
+            </div>
+        </div>
+
+        <footer class="footer">
+            EA Stress Test System v2 | Top 20 passes per workflow | Generated <span id="genDate"></span>
+        </footer>
+    </div>
+
+    <script>
+        // DATA will be embedded here by the generator
+        const DATA = {{DATA_JSON}};
+
+        let currentFilter = 'all';
+        let searchTerm = '';
+        let currentSort = { key: 'score', desc: true };
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            initSummary();
+            initFilters();
+            initTable();
+            renderTable();
+            document.getElementById('lastUpdated').textContent = `Updated: ${DATA.updated_at || '-'}`;
+            document.getElementById('genDate').textContent = new Date().toLocaleString();
+        });
+
+        function initSummary() {
+            const passes = DATA.passes || [];
+
+            document.getElementById('totalCount').textContent = passes.length;
+            document.getElementById('workflowCount').textContent = DATA.workflows_processed || 0;
+            document.getElementById('consistentCount').textContent = passes.filter(p => p.status === 'consistent').length;
+            document.getElementById('forwardCount').textContent = passes.filter(p => p.status === 'forward_only').length;
+            document.getElementById('backCount').textContent = passes.filter(p => p.status === 'back_only').length;
+
+            document.getElementById('summaryText').textContent =
+                `${passes.length} passes from ${DATA.workflows_processed || 0} workflow(s)`;
+
+            // Averages
+            if (passes.length > 0) {
+                const avgScore = passes.reduce((s, p) => s + (p.score_num || 0), 0) / passes.length;
+                const avgPF = passes.reduce((s, p) => s + (p.pf_num || 0), 0) / passes.length;
+                const avgDD = passes.reduce((s, p) => s + (p.dd_num || 0), 0) / passes.length;
+                const avgSharpe = passes.reduce((s, p) => s + (p.sharpe_num || 0), 0) / passes.length;
+                const bestProfit = Math.max(...passes.map(p => p.profit_num || 0));
+
+                document.getElementById('avgScore').textContent = avgScore.toFixed(1);
+                document.getElementById('avgPF').textContent = avgPF.toFixed(2);
+                document.getElementById('avgDD').textContent = avgDD.toFixed(1) + '%';
+                document.getElementById('avgSharpe').textContent = avgSharpe.toFixed(1);
+                document.getElementById('bestProfit').textContent = '£' + bestProfit.toLocaleString();
+            }
+        }
+
+        function initFilters() {
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    currentFilter = btn.dataset.filter;
+                    renderTable();
+                });
+            });
+
+            document.getElementById('searchInput').addEventListener('input', (e) => {
+                searchTerm = e.target.value.toLowerCase();
+                renderTable();
+            });
+        }
+
+        function initTable() {
+            document.querySelectorAll('#leaderboardTable th').forEach(th => {
+                if (th.dataset.sort) {
+                    th.addEventListener('click', () => sortTable(th.dataset.sort));
+                }
+            });
+        }
+
+        function sortTable(key) {
+            if (currentSort.key === key) {
+                currentSort.desc = !currentSort.desc;
+            } else {
+                currentSort.key = key;
+                currentSort.desc = ['rank', 'dd'].includes(key) ? false : true;
+            }
+
+            // Update header styles
+            document.querySelectorAll('#leaderboardTable th').forEach(th => {
+                th.classList.remove('sorted');
+                const icon = th.querySelector('.sort-icon');
+                if (icon) icon.remove();
+
+                if (th.dataset.sort === key) {
+                    th.classList.add('sorted');
+                    th.innerHTML += `<span class="sort-icon">${currentSort.desc ? '▼' : '▲'}</span>`;
+                }
+            });
+
+            renderTable();
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('leaderboardBody');
+            const emptyState = document.getElementById('emptyState');
+            tbody.innerHTML = '';
+
+            let passes = [...(DATA.passes || [])];
+
+            // Filter by status
+            if (currentFilter !== 'all') {
+                passes = passes.filter(p => p.status === currentFilter);
+            }
+
+            // Filter by search
+            if (searchTerm) {
+                passes = passes.filter(p =>
+                    p.ea_name.toLowerCase().includes(searchTerm) ||
+                    p.symbol.toLowerCase().includes(searchTerm)
+                );
+            }
+
+            // Sort
+            passes.sort((a, b) => {
+                let aVal, bVal;
+
+                switch (currentSort.key) {
+                    case 'rank': aVal = a.rank; bVal = b.rank; break;
+                    case 'ea_name': aVal = a.ea_name; bVal = b.ea_name; return currentSort.desc ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
+                    case 'status':
+                        const statusOrder = { consistent: 0, forward_only: 1, back_only: 2, mixed: 3 };
+                        aVal = statusOrder[a.status] || 4;
+                        bVal = statusOrder[b.status] || 4;
+                        break;
+                    case 'score': aVal = a.score_num || 0; bVal = b.score_num || 0; break;
+                    case 'profit': aVal = a.profit_num || 0; bVal = b.profit_num || 0; break;
+                    case 'pf': aVal = a.pf_num || 0; bVal = b.pf_num || 0; break;
+                    case 'dd': aVal = a.dd_num || 0; bVal = b.dd_num || 0; break;
+                    case 'sharpe': aVal = a.sharpe_num || 0; bVal = b.sharpe_num || 0; break;
+                    case 'trades': aVal = a.total_trades || 0; bVal = b.total_trades || 0; break;
+                    case 'forward': aVal = a.forward_num || 0; bVal = b.forward_num || 0; break;
+                    case 'back': aVal = a.back_num || 0; bVal = b.back_num || 0; break;
+                    default: aVal = 0; bVal = 0;
+                }
+
+                return currentSort.desc ? bVal - aVal : aVal - bVal;
+            });
+
+            if (passes.length === 0) {
+                emptyState.style.display = 'block';
+                return;
+            }
+
+            emptyState.style.display = 'none';
+
+            passes.forEach((p, idx) => {
+                const tr = document.createElement('tr');
+                tr.onclick = () => window.location.href = p.dashboard_link;
+
+                const scoreClass = (p.score_num || 0) >= 5 ? 'positive' : (p.score_num || 0) < 3 ? 'negative' : '';
+                const pfClass = (p.pf_num || 0) >= 1.5 ? 'positive' : (p.pf_num || 0) < 1 ? 'negative' : '';
+                const ddClass = (p.dd_num || 0) <= 20 ? 'positive' : (p.dd_num || 0) > 30 ? 'negative' : '';
+                const fwdClass = (p.forward_num || 0) > 0 ? 'positive' : 'negative';
+                const backClass = (p.back_num || 0) > 0 ? 'positive' : 'negative';
+
+                tr.innerHTML = `
+                    <td><strong>${idx + 1}</strong></td>
+                    <td>
+                        <div class="ea-cell">
+                            <span class="ea-name">${p.ea_name}</span>
+                            <span class="ea-meta">${p.symbol} ${p.timeframe} | Pass #${p.pass_num}</span>
+                        </div>
+                    </td>
+                    <td><span class="status-badge ${p.status}">${p.status_label || p.status}</span></td>
+                    <td class="score-cell ${scoreClass}">${p.score}</td>
+                    <td>${p.profit}</td>
+                    <td class="${pfClass}">${p.profit_factor}</td>
+                    <td class="${ddClass}">${p.max_drawdown_pct}</td>
+                    <td>${p.sharpe_ratio}</td>
+                    <td>${p.total_trades}</td>
+                    <td class="${fwdClass}">${p.forward_result}</td>
+                    <td class="${backClass}">${p.back_result}</td>
+                `;
+
+                tbody.appendChild(tr);
+            });
+        }
+    </script>
+</body>
+</html>

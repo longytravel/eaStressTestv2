@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EA Leaderboard - Stress Test Results</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <h1>EA Leaderboard</h1>
+                <div class="meta">{{total_eas}} EAs tested &bull; Last updated: {{updated_at}}</div>
+            </div>
+            <div class="header-right">
+                <div class="score-badge">
+                    <div class="score-value">{{ready_count}}</div>
+                    <div class="score-label">Go-Live Ready</div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Filters -->
+        <section class="filters">
+            <button class="filter-btn active" data-filter="all">All ({{total_eas}})</button>
+            <button class="filter-btn" data-filter="ready">Go-Live Ready ({{ready_count}})</button>
+            <button class="filter-btn" data-filter="review">Needs Review ({{review_count}})</button>
+            <button class="filter-btn" data-filter="failed">Failed ({{failed_count}})</button>
+            <button class="filter-btn" data-filter="overfit">Overfit Risk ({{overfit_count}})</button>
+        </section>
+
+        <!-- Summary Stats -->
+        <section class="metrics-grid" style="margin-bottom: 24px;">
+            <div class="metric-card">
+                <div class="metric-value">{{avg_score}}</div>
+                <div class="metric-label">Avg Score</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">{{avg_pf}}</div>
+                <div class="metric-label">Avg Profit Factor</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">{{avg_dd}}%</div>
+                <div class="metric-label">Avg Drawdown</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">{{avg_sharpe}}</div>
+                <div class="metric-label">Avg Sharpe</div>
+            </div>
+        </section>
+
+        <!-- Leaderboard Table -->
+        <section class="table-section">
+            <table class="data-table" id="leaderboard-table">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>EA</th>
+                        <th>Symbol</th>
+                        <th>Score</th>
+                        <th>PF</th>
+                        <th>DD%</th>
+                        <th>Sharpe</th>
+                        <th>Trades</th>
+                        <th>MC Conf</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{#eas}}
+                    <tr data-status="{{status}}" onclick="window.location='{{dashboard_link}}'">
+                        <td>{{rank}}</td>
+                        <td><strong>{{ea_name}}</strong></td>
+                        <td>{{symbol}} {{timeframe}}</td>
+                        <td class="num"><strong>{{score}}</strong></td>
+                        <td class="num">{{profit_factor}}</td>
+                        <td class="num">{{max_drawdown_pct}}%</td>
+                        <td class="num">{{sharpe_ratio}}</td>
+                        <td class="num">{{total_trades}}</td>
+                        <td class="num">{{mc_confidence}}%</td>
+                        <td>
+                            <span class="status-badge status-{{status}}">{{status_label}}</span>
+                        </td>
+                    </tr>
+                    {{/eas}}
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Insights Summary -->
+        <section class="insights" style="margin-top: 24px;">
+            <div class="insight-card insight-edge">
+                <h3><span class="icon">★</span> Top Performers</h3>
+                <ul>
+                    {{#top_performers}}
+                    <li><strong>{{ea_name}}</strong> - {{edge_summary}}</li>
+                    {{/top_performers}}
+                </ul>
+            </div>
+            <div class="insight-card insight-weakness">
+                <h3><span class="icon">!</span> Common Issues</h3>
+                <ul>
+                    {{#common_issues}}
+                    <li>{{.}}</li>
+                    {{/common_issues}}
+                </ul>
+            </div>
+            <div class="insight-card insight-action">
+                <h3><span class="icon">⚡</span> Quick Wins</h3>
+                <ul>
+                    {{#quick_wins}}
+                    <li><strong>{{ea_name}}:</strong> {{recommendation}}</li>
+                    {{/quick_wins}}
+                </ul>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer style="text-align: center; padding: 24px; color: var(--text-muted); font-size: 12px;">
+            EA Stress Test System v2
+        </footer>
+    </div>
+
+    <script>
+        // Filter functionality
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                // Update active state
+                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+
+                // Filter rows
+                const filter = btn.dataset.filter;
+                document.querySelectorAll('#leaderboard-table tbody tr').forEach(row => {
+                    if (filter === 'all' || row.dataset.status === filter) {
+                        row.style.display = '';
+                    } else {
+                        row.style.display = 'none';
+                    }
+                });
+            });
+        });
+
+        // Sort functionality
+        document.querySelectorAll('#leaderboard-table th').forEach((th, index) => {
+            th.style.cursor = 'pointer';
+            th.addEventListener('click', () => {
+                sortTable(index);
+            });
+        });
+
+        function sortTable(columnIndex) {
+            const table = document.getElementById('leaderboard-table');
+            const tbody = table.querySelector('tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+
+            rows.sort((a, b) => {
+                const aVal = a.cells[columnIndex].textContent.trim();
+                const bVal = b.cells[columnIndex].textContent.trim();
+
+                // Try numeric sort
+                const aNum = parseFloat(aVal.replace(/[^0-9.-]/g, ''));
+                const bNum = parseFloat(bVal.replace(/[^0-9.-]/g, ''));
+
+                if (!isNaN(aNum) && !isNaN(bNum)) {
+                    return bNum - aNum; // Descending
+                }
+
+                return aVal.localeCompare(bVal);
+            });
+
+            rows.forEach(row => tbody.appendChild(row));
+        }
+    </script>
+</body>
+</html>
