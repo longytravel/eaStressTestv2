@@ -1,0 +1,151 @@
+{
+  "ea_name": "RSI_Divergence_Pro",
+  "ea_path": "C:\\Users\\User\\AppData\\Roaming\\MetaQuotes\\Terminal\\A42909ABCDDDD04324904B57BA9776B8\\MQL5\\Experts\\RSI_Divergence_Pro.mq5",
+  "timeframe_default": "H4",
+  "symbol_default": "GBPUSD",
+  "source_workflow_id": "RSI_Divergence_Pro_20260104_120454_064561",
+  "source": "claude_analysis",
+  "wide_validation_params": {
+    "RSI_Period": 7,
+    "Swing_Strength": 2,
+    "Min_Bars_Between": 1,
+    "Max_Bars_Between": 200,
+    "Tolerance": 5.0,
+    "Max_Spread_Points": 5000,
+    "Max_Daily_Loss_Percent": 100.0,
+    "Use_Price_Slope_Filter": 0,
+    "Use_RSI_Slope_Filter": 0,
+    "EAStressSafety_MaxSpreadPips": 500.0,
+    "EAStressSafety_MaxSlippagePips": 500.0
+  },
+  "optimization_ranges": [
+    {
+      "name": "RSI_Period",
+      "start": 7,
+      "step": 1,
+      "stop": 30,
+      "optimize": true,
+      "category": "period",
+      "rationale": "RSI lookback"
+    },
+    {
+      "name": "Swing_Strength",
+      "start": 2,
+      "step": 1,
+      "stop": 10,
+      "optimize": true,
+      "category": "period",
+      "rationale": "Swing confirmation bars"
+    },
+    {
+      "name": "Min_Bars_Between",
+      "start": 1,
+      "step": 1,
+      "stop": 20,
+      "optimize": true,
+      "category": "filter",
+      "rationale": "Minimum bars between swings"
+    },
+    {
+      "name": "Max_Bars_Between",
+      "start": 30,
+      "step": 10,
+      "stop": 200,
+      "optimize": true,
+      "category": "filter",
+      "rationale": "Maximum bars between swings"
+    },
+    {
+      "name": "Tolerance",
+      "start": 0.1,
+      "step": 0.2,
+      "stop": 5.1,
+      "optimize": true,
+      "category": "threshold",
+      "rationale": "Divergence tolerance"
+    },
+    {
+      "name": "StopLoss_Points",
+      "start": 200,
+      "step": 100,
+      "stop": 1500,
+      "optimize": true,
+      "category": "risk",
+      "rationale": "Stop loss points"
+    },
+    {
+      "name": "TakeProfit_Multiplier",
+      "start": 1.0,
+      "step": 0.25,
+      "stop": 3.0,
+      "optimize": true,
+      "category": "reward",
+      "rationale": "RR multiplier"
+    },
+    {
+      "name": "Risk_Percent",
+      "start": 0.5,
+      "step": 0.25,
+      "stop": 2.0,
+      "optimize": true,
+      "category": "risk",
+      "rationale": "Risk per trade (% equity)"
+    },
+    {
+      "name": "Max_Spread_Points",
+      "start": 30,
+      "step": 0,
+      "stop": 30,
+      "optimize": false,
+      "category": "safety",
+      "rationale": "Max spread (fixed)"
+    },
+    {
+      "name": "Max_Daily_Loss_Percent",
+      "start": 5.0,
+      "step": 0,
+      "stop": 5.0,
+      "optimize": false,
+      "category": "safety",
+      "rationale": "Daily loss limit (fixed)"
+    },
+    {
+      "name": "Use_Price_Slope_Filter",
+      "start": 0,
+      "step": 0,
+      "stop": 0,
+      "optimize": false,
+      "category": "toggle",
+      "rationale": "Disable (defaults yield 0 trades)"
+    },
+    {
+      "name": "Use_RSI_Slope_Filter",
+      "start": 0,
+      "step": 0,
+      "stop": 0,
+      "optimize": false,
+      "category": "toggle",
+      "rationale": "Disable (defaults yield 0 trades)"
+    },
+    {
+      "name": "EAStressSafety_MaxSpreadPips",
+      "start": 3.0,
+      "stop": 3.0,
+      "step": 0,
+      "optimize": false,
+      "default": 3.0,
+      "category": "safety",
+      "rationale": "Injected safety parameter (fixed)"
+    },
+    {
+      "name": "EAStressSafety_MaxSlippagePips",
+      "start": 3.0,
+      "stop": 3.0,
+      "step": 0,
+      "optimize": false,
+      "default": 3.0,
+      "category": "safety",
+      "rationale": "Injected safety parameter (fixed)"
+    }
+  ]
+}

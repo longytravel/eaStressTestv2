@@ -198,6 +198,123 @@ class TestExtractTrades:
         assert not result.success
         Path(temp_path).unlink()
 
+    def test_deals_table_allocates_entry_commission_to_trade(self):
+        """Entry commission should be included in the closed trade net profit."""
+        html_content = """
+        <html><body>
+        Initial Deposit: <b>1000.00</b>
+        <table>
+          <tr>
+            <td>2024.01.01 00:00:00</td><td>1</td><td>EURUSD</td><td>buy</td><td>in</td>
+            <td>1.0</td><td>1.0000</td><td>0</td><td>-3.50</td><td>0</td><td>0</td><td>996.50</td>
+          </tr>
+          <tr>
+            <td>2024.01.02 00:00:00</td><td>2</td><td>EURUSD</td><td>sell</td><td>out</td>
+            <td>1.0</td><td>1.0010</td><td>0</td><td>0</td><td>0</td><td>10.00</td><td>1006.50</td>
+          </tr>
+        </table>
+        </body></html>
+        """
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-16-le') as f:
+            f.write(html_content)
+            temp_path = f.name
+
+        result = extract_trades(temp_path)
+        Path(temp_path).unlink()
+
+        assert result.success
+        assert len(result.trades) == 1
+        trade = result.trades[0]
+        assert trade.commission == pytest.approx(-3.50)
+        assert trade.gross_profit == pytest.approx(10.00)
+        assert trade.net_profit == pytest.approx(6.50)
+        assert result.initial_balance == pytest.approx(1000.00)
+        assert result.final_balance == pytest.approx(1006.50)
+        assert result.total_net_profit == pytest.approx(6.50)
+        assert result.total_commission == pytest.approx(-3.50)
+
+    def test_deals_table_allocates_entry_commission_on_partial_closes(self):
+        """Entry commission should be allocated proportionally across partial closes."""
+        html_content = """
+        <html><body>
+        Initial Deposit: <b>1000.00</b>
+        <table>
+          <tr>
+            <td>2024.01.01 00:00:00</td><td>1</td><td>EURUSD</td><td>buy</td><td>in</td>
+            <td>2.0</td><td>1.0000</td><td>0</td><td>-4.00</td><td>0</td><td>0</td><td>996.00</td>
+          </tr>
+          <tr>
+            <td>2024.01.02 00:00:00</td><td>2</td><td>EURUSD</td><td>sell</td><td>out</td>
+            <td>1.0</td><td>1.0010</td><td>0</td><td>0</td><td>0</td><td>5.00</td><td>1001.00</td>
+          </tr>
+          <tr>
+            <td>2024.01.03 00:00:00</td><td>3</td><td>EURUSD</td><td>sell</td><td>out</td>
+            <td>1.0</td><td>1.0020</td><td>0</td><td>0</td><td>0</td><td>7.00</td><td>1008.00</td>
+          </tr>
+        </table>
+        </body></html>
+        """
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-16-le') as f:
+            f.write(html_content)
+            temp_path = f.name
+
+        result = extract_trades(temp_path)
+        Path(temp_path).unlink()
+
+        assert result.success
+        assert len(result.trades) == 2
+        # Each close should carry half the entry commission (-2.00)
+        assert result.trades[0].commission == pytest.approx(-2.00)
+        assert result.trades[1].commission == pytest.approx(-2.00)
+        assert result.trades[0].gross_profit == pytest.approx(5.00)
+        assert result.trades[1].gross_profit == pytest.approx(7.00)
+        assert result.trades[0].net_profit == pytest.approx(3.00)
+        assert result.trades[1].net_profit == pytest.approx(5.00)
+        assert result.total_commission == pytest.approx(-4.00)
+        assert result.total_net_profit == pytest.approx(8.00)
+        assert result.final_balance == pytest.approx(1008.00)
+
+    def test_deals_table_allocates_entry_commission_on_three_partial_closes(self):
+        """Entry commission should reconcile exactly across 3+ partial closes."""
+        html_content = """
+        <html><body>
+        Initial Deposit: <b>1000.00</b>
+        <table>
+          <tr>
+            <td>2024.01.01 00:00:00</td><td>1</td><td>EURUSD</td><td>buy</td><td>in</td>
+            <td>3.0</td><td>1.0000</td><td>0</td><td>-6.00</td><td>0</td><td>0</td><td>994.00</td>
+          </tr>
+          <tr>
+            <td>2024.01.02 00:00:00</td><td>2</td><td>EURUSD</td><td>sell</td><td>out</td>
+            <td>1.0</td><td>1.0010</td><td>0</td><td>0</td><td>0</td><td>3.00</td><td>997.00</td>
+          </tr>
+          <tr>
+            <td>2024.01.03 00:00:00</td><td>3</td><td>EURUSD</td><td>sell</td><td>out</td>
+            <td>1.0</td><td>1.0020</td><td>0</td><td>0</td><td>0</td><td>4.00</td><td>1001.00</td>
+          </tr>
+          <tr>
+            <td>2024.01.04 00:00:00</td><td>4</td><td>EURUSD</td><td>sell</td><td>out</td>
+            <td>1.0</td><td>1.0030</td><td>0</td><td>0</td><td>0</td><td>5.00</td><td>1006.00</td>
+          </tr>
+        </table>
+        </body></html>
+        """
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-16-le') as f:
+            f.write(html_content)
+            temp_path = f.name
+
+        result = extract_trades(temp_path)
+        Path(temp_path).unlink()
+
+        assert result.success
+        assert len(result.trades) == 3
+        assert [t.commission for t in result.trades] == [pytest.approx(-2.00)] * 3
+        assert [t.gross_profit for t in result.trades] == [pytest.approx(3.00), pytest.approx(4.00), pytest.approx(5.00)]
+        assert [t.net_profit for t in result.trades] == [pytest.approx(1.00), pytest.approx(2.00), pytest.approx(3.00)]
+        assert result.total_commission == pytest.approx(-6.00)
+        assert result.total_net_profit == pytest.approx(6.00)
+        assert result.final_balance == pytest.approx(1006.00)
+
 
 class TestComputeEquityCurve:
     """Test compute_equity_curve function."""

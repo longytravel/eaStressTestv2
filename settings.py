@@ -23,6 +23,15 @@ def get_backtest_dates():
         "split": split_date.strftime("%Y.%m.%d"),  # In-sample ends here
     }
 
+def get_recent_dates(days: int = 30):
+    """Calculate a short lookback period ending today (used for tick-history validation)."""
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=days)
+    return {
+        "start": start_date.strftime("%Y.%m.%d"),
+        "end": end_date.strftime("%Y.%m.%d"),
+    }
+
 # Data model: 1-minute OHLC
 # Model=0: Every tick
 # Model=1: 1 minute OHLC
@@ -31,6 +40,17 @@ DATA_MODEL = 1
 
 # Execution latency in milliseconds
 EXECUTION_LATENCY_MS = 10
+
+# Tick-history validation window (many brokers only provide ~1 month)
+TICK_VALIDATION_DAYS = 30
+
+# EA-level safety defaults (injected into EAs that don't already have these)
+SAFETY_DEFAULT_MAX_SPREAD_PIPS = 3.0
+SAFETY_DEFAULT_MAX_SLIPPAGE_PIPS = 3.0
+
+# During Step 5 (trade validation), we loosen safety limits to avoid false "no trades" failures.
+SAFETY_VALIDATION_MAX_SPREAD_PIPS = 500.0
+SAFETY_VALIDATION_MAX_SLIPPAGE_PIPS = 500.0
 
 # Account settings
 DEPOSIT = 3000
@@ -121,16 +141,84 @@ CORRELATION_LOOKBACK_DAYS = 252  # ~1 trading year
 # =============================================================================
 
 SCORE_WEIGHTS = {
-    'profit_factor': 0.15,
-    'max_drawdown': 0.15,      # Inverted - lower is better
-    'sharpe_ratio': 0.15,
-    'sortino_ratio': 0.15,
-    'calmar_ratio': 0.10,
-    'recovery_factor': 0.10,
-    'expected_payoff': 0.10,
-    'win_rate': 0.05,
-    'param_stability': 0.05,   # Bonus for stable parameters
+    # Profit-focused weights - actual money matters most
+    'expected_payoff': 0.20,   # Profit per trade - key metric (was 0.10)
+    'calmar_ratio': 0.15,      # Annual return / max DD (was 0.10)
+    'profit_factor': 0.15,     # Edge quality
+    'max_drawdown': 0.15,      # Risk - inverted, lower is better
+    'sharpe_ratio': 0.10,      # Consistency (was 0.15)
+    'sortino_ratio': 0.10,     # Downside consistency (was 0.15)
+    'recovery_factor': 0.05,   # How fast recovers from DD (was 0.10)
+    'win_rate': 0.05,          # Psychological comfort
+    'param_stability': 0.05,   # Robustness bonus
 }
+
+# =============================================================================
+# BEST PASS SELECTION (Step 9)
+# =============================================================================
+#
+# Determines which backtested pass becomes the "best" pass for:
+# - headline metrics
+# - Monte Carlo (Step 10)
+# - workflow composite score
+#
+# Options:
+#   - "score": leaderboard composite score (recommended)
+#   - "profit": net profit
+BEST_PASS_SELECTION = "score"
+
+# =============================================================================
+# AUTOMATION (Optional)
+# =============================================================================
+#
+# If True, Step 8b (stats analysis) is done automatically by score to enable
+# unattended / batch runs (no LLM dependency). Interactive runs can keep this False.
+AUTO_STATS_ANALYSIS = False
+AUTO_STATS_TOP_N = 20
+
+# Post-steps after report generation
+AUTO_RUN_FORWARD_WINDOWS = True   # Step 13 (fast, trade-list based)
+AUTO_RUN_MULTI_PAIR = False       # Step 14 (slow, runs full workflow per symbol)
+MULTI_PAIR_SYMBOLS = ["EURUSD", "USDJPY"]
+
+# =============================================================================
+# POST-STEP STRESS SCENARIOS (Step 12)
+# =============================================================================
+#
+# These run AFTER the main workflow as additional robustness checks.
+# They are infrastructure-level and should work for every EA.
+#
+# Notes:
+# - In headless MT5 runs, some tester knobs (notably fixed `Spread=`) may be ignored.
+#   Prefer tick-history validation for realistic spread behaviour.
+# - `ExecutionMode` (latency) only has a visible effect in tick model for many EAs.
+PIP_TO_POINTS = 10
+
+# Optional override list. When None, the stress suite is generated dynamically from
+# the window + overlay settings below.
+STRESS_SCENARIOS = None
+
+# Window scenarios (relative to the workflow end date)
+# Include longer windows for tick-history validation comparisons.
+STRESS_WINDOW_ROLLING_DAYS = [7, 14, 30, 60, 90]  # e.g., last 7d/14d/30d/60d/90d
+STRESS_WINDOW_CALENDAR_MONTHS_AGO = [1, 2, 3]  # 1=last full month, 2=two months ago, etc.
+
+# Models to run per window
+# Model=1: 1-minute OHLC, Model=0: Every tick
+STRESS_WINDOW_MODELS = [1, 0]
+
+# Optional tick-only latency variants to append (ms). Empty list disables.
+STRESS_TICK_LATENCY_MS = [250, 5000]
+
+# Cost overlays (applied post-hoc from the trade list; does not re-run MT5)
+STRESS_INCLUDE_OVERLAYS = True
+STRESS_OVERLAY_SPREAD_PIPS = [0.0, 1.0, 2.0, 3.0, 5.0]
+STRESS_OVERLAY_SLIPPAGE_PIPS = [0.0, 1.0, 3.0]
+STRESS_OVERLAY_SLIPPAGE_SIDES = 2  # entry + exit
+
+# If True, Step 12 runs automatically after Step 11.
+# If False, you can invoke stress scenarios manually for a completed workflow.
+AUTO_RUN_STRESS_SCENARIOS = True
 
 # =============================================================================
 # OPTIMIZATION SETTINGS
@@ -146,6 +234,9 @@ MAX_OPTIMIZATION_PASSES = 1000
 
 # Top N passes to show in dashboard
 TOP_PASSES_DISPLAY = 20
+
+# Top N passes to backtest for detailed analysis (equity curves, Monte Carlo, etc.)
+TOP_PASSES_BACKTEST = 30
 
 # =============================================================================
 # FILE PATHS

@@ -5,6 +5,7 @@ Manages persistent state for EA stress test workflows.
 State is saved as JSON after each step for recovery and auditing.
 """
 import json
+import os
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Any
@@ -63,6 +64,9 @@ class StateManager:
         '9_backtest_robust',
         '10_monte_carlo',
         '11_generate_reports',
+        '12_stress_scenarios',
+        '13_forward_windows',
+        '14_multi_pair',
     ]
 
     def __init__(
@@ -80,7 +84,7 @@ class StateManager:
 
         # Generate workflow ID if not provided
         if workflow_id is None:
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
             workflow_id = f"{ea_name}_{timestamp}"
 
         self.workflow_id = workflow_id
@@ -109,7 +113,11 @@ class StateManager:
 
     @classmethod
     def load(cls, workflow_id: str, runs_dir: Optional[str] = None) -> 'StateManager':
-        """Load an existing workflow state."""
+        """Load an existing workflow state.
+
+        NOTE: This is a CLASS method that returns a NEW StateManager instance.
+        If you're using WorkflowRunner, use WorkflowRunner.from_workflow_id() instead.
+        """
         runs_dir = Path(runs_dir or settings.RUNS_DIR)
         state_file = runs_dir / f"workflow_{workflow_id}.json"
 
@@ -127,6 +135,25 @@ class StateManager:
         instance.state = state
 
         return instance
+
+    def reload(self, workflow_id: str = None) -> None:
+        """Reload state from disk, optionally from a different workflow.
+
+        This is an INSTANCE method that modifies this StateManager in place.
+        Use this when you need to reload state into an existing runner.
+
+        Args:
+            workflow_id: Optional different workflow to load. If None, reloads current.
+        """
+        if workflow_id:
+            self.workflow_id = workflow_id
+            self.state_file = self.runs_dir / f"workflow_{workflow_id}.json"
+
+        if not self.state_file.exists():
+            raise FileNotFoundError(f"Workflow not found: {self.workflow_id}")
+
+        with open(self.state_file, 'r') as f:
+            self.state = json.load(f)
 
     @classmethod
     def list_workflows(cls, runs_dir: Optional[str] = None) -> list[dict]:
@@ -146,16 +173,40 @@ class StateManager:
                         'current_step': state['current_step'],
                         'file': str(f),
                     })
-            except:
-                pass
+            except Exception as e:
+                # Don't silently hide corrupted workflows; surface them and log the error.
+                try:
+                    print(f"Warning: failed to read workflow state {f}: {e}", file=sys.stderr)
+                except Exception:
+                    pass
+                workflows.append({
+                    'workflow_id': f.stem.replace('workflow_', ''),
+                    'ea_name': 'Unknown',
+                    'status': 'corrupted',
+                    'created_at': '',
+                    'current_step': -1,
+                    'file': str(f),
+                    'error': str(e),
+                })
 
         return workflows
 
     def _save(self) -> None:
         """Save state to JSON file."""
         self.state['updated_at'] = datetime.now().isoformat()
-        with open(self.state_file, 'w') as f:
+        tmp_path = self.state_file.with_suffix(self.state_file.suffix + ".tmp")
+        with open(tmp_path, 'w', encoding='utf-8') as f:
             json.dump(self.state, f, indent=2, default=str)
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except Exception:
+                pass
+        os.replace(tmp_path, self.state_file)
+
+    def save(self) -> None:
+        """Save state to disk (public alias for compatibility)."""
+        self._save()
 
     def get_step_index(self, step_name: str) -> int:
         """Get the index of a step by name."""

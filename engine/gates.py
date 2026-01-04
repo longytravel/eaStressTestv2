@@ -264,6 +264,12 @@ def calculate_composite_score(metrics: dict) -> float:
 
     Returns score from 0-10.
     """
+    # Accept common aliases used elsewhere in the codebase/state files.
+    # (Workflow state stores drawdown as `max_drawdown_pct` but scoring expects `max_drawdown`.)
+    if isinstance(metrics, dict):
+        if 'max_drawdown' not in metrics and 'max_drawdown_pct' in metrics:
+            metrics = {**metrics, 'max_drawdown': metrics.get('max_drawdown_pct', 0)}
+
     weights = settings.SCORE_WEIGHTS
     score = 0
     total_weight = 0

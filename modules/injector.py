@@ -63,6 +63,95 @@ SAFETY_GUARDS = '''
 #endif
 '''
 
+# Trade safety guards to enforce spread + slippage limits (EA-agnostic)
+TRADE_SAFETY_GUARDS = '''
+//+------------------------------------------------------------------+
+//| Trade Safety - Injected by EA Stress Test System                 |
+//+------------------------------------------------------------------+
+#ifdef STRESS_TEST_MODE
+
+// Trading safety inputs (NOT optimized)
+input double EAStressSafety_MaxSpreadPips = 3.0;     // Max allowed spread (pips)
+input double EAStressSafety_MaxSlippagePips = 3.0;   // Max allowed slippage (pips)
+
+double EAStressSafety_PipSize()
+{
+    // 5-digit/3-digit brokers: 1 pip = 10 points
+    if(_Digits == 3 || _Digits == 5) return _Point * 10.0;
+    return _Point;
+}
+
+bool EAStressSafety_IsSpreadOk()
+{
+    if(EAStressSafety_MaxSpreadPips <= 0) return true; // Disabled
+
+    long spreadPoints = 0;
+    if(!SymbolInfoInteger(_Symbol, SYMBOL_SPREAD, spreadPoints)) return true;
+
+    double maxSpreadPoints = (EAStressSafety_MaxSpreadPips * EAStressSafety_PipSize()) / _Point;
+    if(maxSpreadPoints <= 0) return true;
+
+    return (double)spreadPoints <= maxSpreadPoints;
+}
+
+int EAStressSafety_MaxDeviationPoints()
+{
+    if(EAStressSafety_MaxSlippagePips <= 0) return 0; // Disabled
+    double points = (EAStressSafety_MaxSlippagePips * EAStressSafety_PipSize()) / _Point;
+    if(points < 0) return 0;
+    return (int)MathRound(points);
+}
+
+bool EAStressSafety_OrderSend(const MqlTradeRequest& request, MqlTradeResult& result)
+{
+    if(!EAStressSafety_IsSpreadOk())
+    {
+        result.retcode = 0;
+        result.comment = "EAStressSafety: Spread too high";
+        return false;
+    }
+
+    MqlTradeRequest req = request;
+
+    int maxDev = EAStressSafety_MaxDeviationPoints();
+    if(maxDev > 0)
+    {
+        // Cap deviation if EA set a looser value
+        if((int)req.deviation <= 0 || (int)req.deviation > maxDev)
+            req.deviation = maxDev;
+    }
+
+    return OrderSend(req, result);
+}
+
+bool EAStressSafety_OrderSendAsync(const MqlTradeRequest& request, MqlTradeResult& result)
+{
+    if(!EAStressSafety_IsSpreadOk())
+    {
+        result.retcode = 0;
+        result.comment = "EAStressSafety: Spread too high";
+        return false;
+    }
+
+    MqlTradeRequest req = request;
+
+    int maxDev = EAStressSafety_MaxDeviationPoints();
+    if(maxDev > 0)
+    {
+        if((int)req.deviation <= 0 || (int)req.deviation > maxDev)
+            req.deviation = maxDev;
+    }
+
+    return OrderSendAsync(req, result);
+}
+
+// Intercept all order sending (including inside standard library, e.g., CTrade)
+#define OrderSend EAStressSafety_OrderSend
+#define OrderSendAsync EAStressSafety_OrderSendAsync
+
+#endif
+'''
+
 
 def has_ontester(content: str) -> bool:
     """Check if EA already has an OnTester function."""
@@ -74,6 +163,11 @@ def has_ontester(content: str) -> bool:
 def has_safety_guards(content: str) -> bool:
     """Check if EA already has safety guards injected."""
     return 'STRESS_TEST_MODE' in content
+
+
+def has_trade_safety_guards(content: str) -> bool:
+    """Check if EA already has trade safety guards injected."""
+    return 'EAStressSafety_MaxSpreadPips' in content
 
 
 def inject_ontester(content: str) -> tuple[str, bool]:
@@ -126,8 +220,7 @@ def inject_safety(content: str) -> tuple[str, bool]:
     Returns:
         Tuple of (modified_content, was_injected)
     """
-    if has_safety_guards(content):
-        return content, False
+    injected = False
 
     # Inject safety guards at the very beginning, after initial comment block
     comment_end = 0
@@ -141,8 +234,34 @@ def inject_safety(content: str) -> tuple[str, bool]:
                 comment_end = sum(len(l) + 1 for l in lines[:i+1])
                 break
 
-    modified = content[:comment_end] + '\n' + SAFETY_GUARDS + '\n' + content[comment_end:]
-    return modified, True
+    # If safety guard block is missing, insert it
+    if not has_safety_guards(content):
+        content = content[:comment_end] + '\n' + SAFETY_GUARDS + '\n' + content[comment_end:]
+        injected = True
+
+    # If trade safety is missing, insert it (upgrade older injected files)
+    if not has_trade_safety_guards(content):
+        # Prefer inserting immediately after the safety guard block if present
+        marker = '//| Safety Guards - Injected by EA Stress Test System'
+        idx = content.find(marker)
+        if idx != -1:
+            end_idx = content.find('#endif', idx)
+            if end_idx != -1:
+                end_idx = content.find('\n', end_idx)
+                if end_idx != -1:
+                    content = content[:end_idx+1] + TRADE_SAFETY_GUARDS + '\n' + content[end_idx+1:]
+                    injected = True
+                else:
+                    content = content + '\n' + TRADE_SAFETY_GUARDS + '\n'
+                    injected = True
+            else:
+                content = content + '\n' + TRADE_SAFETY_GUARDS + '\n'
+                injected = True
+        else:
+            content = content[:comment_end] + '\n' + TRADE_SAFETY_GUARDS + '\n' + content[comment_end:]
+            injected = True
+
+    return content, injected
 
 
 def create_modified_ea(

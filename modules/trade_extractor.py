@@ -27,6 +27,22 @@ class Trade:
     swap: float = 0.0
     gross_profit: float = 0.0
     net_profit: float = 0.0  # gross_profit + commission + swap
+    # Extended fields for enhanced dashboard
+    mfe: float = 0.0  # Maximum Favorable Excursion (best unrealized profit)
+    mae: float = 0.0  # Maximum Adverse Excursion (worst unrealized loss)
+    holding_seconds: int = 0  # Holding time in seconds
+
+    @property
+    def holding_time_str(self) -> str:
+        """Return holding time as human-readable string."""
+        if self.holding_seconds <= 0:
+            return "0:00:00"
+        hours, remainder = divmod(self.holding_seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        if hours >= 24:
+            days, hours = divmod(hours, 24)
+            return f"{days}d {hours}:{minutes:02d}:{seconds:02d}"
+        return f"{hours}:{minutes:02d}:{seconds:02d}"
 
 
 @dataclass
@@ -36,7 +52,17 @@ class TradeExtractionResult:
     trades: List[Trade] = field(default_factory=list)
     initial_balance: float = 0.0
     final_balance: float = 0.0
+    total_net_profit: float = 0.0
+    total_commission: float = 0.0
+    total_swap: float = 0.0
     error: Optional[str] = None
+
+    def __post_init__(self):
+        """Calculate totals from trades if not set."""
+        if self.trades and self.total_net_profit == 0:
+            self.total_net_profit = sum(t.net_profit for t in self.trades)
+            self.total_commission = sum(t.commission for t in self.trades)
+            self.total_swap = sum(t.swap for t in self.trades)
 
 
 def extract_trades(html_path: str) -> TradeExtractionResult:
@@ -113,8 +139,11 @@ def _parse_trades_from_html(content: str) -> TradeExtractionResult:
         re.IGNORECASE | re.DOTALL
     )
 
-    # Track open positions to match with closes
-    open_positions = {}  # ticket -> deal info
+    # Track open positions to match with closes.
+    # NOTE: In MT5, commissions are often charged on ENTRY deals, while Profit is realized on EXIT deals.
+    # We must carry entry commission/swap into the resulting closed-trade record, otherwise PnL/commission
+    # totals (and equity curve) won't match the MT5 "Total Net Profit".
+    open_positions: list[dict] = []
 
     for match in deals_pattern.finditer(content):
         try:
@@ -142,17 +171,9 @@ def _parse_trades_from_html(content: str) -> TradeExtractionResult:
 
             # Match opening and closing deals
             if direction in ('in', 'inout'):
-                # Opening position
-                open_positions[ticket] = {
-                    'ticket': ticket,
-                    'symbol': symbol,
-                    'trade_type': deal_type,
-                    'volume': volume,
-                    'open_time': deal_time,
-                    'open_price': price,
-                }
                 if direction == 'inout':
-                    # Complete trade in one deal
+                    # Complete trade in one deal (rare). Treat as a closed trade and DO NOT
+                    # keep an open position record.
                     trades.append(Trade(
                         ticket=ticket,
                         symbol=symbol,
@@ -168,43 +189,132 @@ def _parse_trades_from_html(content: str) -> TradeExtractionResult:
                         net_profit=profit + commission + swap,
                     ))
                     final_balance = balance
+                else:
+                    # Opening position: store remaining volume and costs so they can be
+                    # allocated to later closing deals (supports partial closes).
+                    open_positions.append({
+                        'ticket': ticket,
+                        'symbol': symbol,
+                        'trade_type': deal_type,  # 'buy' or 'sell' position direction
+                        'open_volume': volume,
+                        'remaining_volume': volume,
+                        'open_time': deal_time,
+                        'open_price': price,
+                        'remaining_commission': commission,
+                        'remaining_swap': swap,
+                        'remaining_profit': profit,  # usually 0 on entry, but keep for completeness
+                    })
 
             elif direction == 'out':
-                # Closing position - find matching open
-                # In MT5, the ticket for close might be different
-                # We need to match by symbol and opposite type
-                if ticket in open_positions:
-                    open_pos = open_positions.pop(ticket)
+                # Closing deal. In MT5, the close deal ticket usually does NOT match the entry
+                # ticket, and partial closes are represented as multiple 'out' deals.
+                close_volume = volume
+                close_comm = commission
+                close_swap = swap
+                close_profit = profit
+
+                # Close deals are the opposite side of the open position:
+                #   - sell out closes a buy position
+                #   - buy out closes a sell position
+                if deal_type == 'sell':
+                    expected_open_type = 'buy'
+                elif deal_type == 'buy':
+                    expected_open_type = 'sell'
                 else:
-                    # Try to find any open position for this symbol
-                    for open_ticket, open_pos in list(open_positions.items()):
-                        if open_pos['symbol'] == symbol:
-                            open_positions.pop(open_ticket)
+                    expected_open_type = None
+
+                open_pos = None
+                open_idx = None
+
+                # Prefer matching by symbol + expected open type (FIFO). Fall back to symbol-only.
+                if expected_open_type:
+                    for idx, pos in enumerate(open_positions):
+                        if pos.get('symbol') == symbol and pos.get('trade_type') == expected_open_type:
+                            open_pos = pos
+                            open_idx = idx
                             break
-                    else:
-                        # No matching open found, create partial trade
-                        open_pos = {
-                            'ticket': ticket,
-                            'symbol': symbol,
-                            'trade_type': deal_type,
-                            'volume': volume,
-                            'open_time': deal_time,
-                            'open_price': price,
-                        }
+
+                if open_pos is None:
+                    for idx, pos in enumerate(open_positions):
+                        if pos.get('symbol') == symbol:
+                            open_pos = pos
+                            open_idx = idx
+                            break
+
+                if open_pos is None:
+                    # No matching open found: treat as a standalone close deal (still include costs)
+                    trades.append(Trade(
+                        ticket=ticket,
+                        symbol=symbol,
+                        trade_type=expected_open_type or deal_type,
+                        volume=close_volume,
+                        open_time=deal_time,
+                        close_time=deal_time,
+                        open_price=price,
+                        close_price=price,
+                        commission=close_comm,
+                        swap=close_swap,
+                        gross_profit=close_profit,
+                        net_profit=close_profit + close_comm + close_swap,
+                    ))
+                    final_balance = balance
+                    continue
+
+                # Allocate remaining entry costs proportionally for partial closes.
+                remaining_vol = float(open_pos.get('remaining_volume') or 0.0)
+                if remaining_vol <= 0:
+                    remaining_vol = float(open_pos.get('open_volume') or 0.0) or 0.0
+
+                remaining_commission = float(open_pos.get('remaining_commission') or 0.0)
+                remaining_swap = float(open_pos.get('remaining_swap') or 0.0)
+                remaining_profit = float(open_pos.get('remaining_profit') or 0.0)
+
+                # If this deal closes the position (or effectively closes it due to floating-point
+                # rounding), allocate *all* remaining entry costs to this close so totals reconcile.
+                is_final_close = remaining_vol > 0 and close_volume >= (remaining_vol - 1e-9)
+
+                if is_final_close:
+                    alloc_comm = remaining_commission
+                    alloc_swap = remaining_swap
+                    alloc_profit = remaining_profit
+                    open_pos['remaining_volume'] = 0.0
+                    open_pos['remaining_commission'] = 0.0
+                    open_pos['remaining_swap'] = 0.0
+                    open_pos['remaining_profit'] = 0.0
+                    if open_idx is not None:
+                        open_positions.pop(open_idx)
+                else:
+                    frac = 1.0
+                    if remaining_vol > 0 and close_volume > 0:
+                        frac = min(1.0, max(0.0, close_volume / remaining_vol))
+
+                    alloc_comm = remaining_commission * frac
+                    alloc_swap = remaining_swap * frac
+                    alloc_profit = remaining_profit * frac
+
+                    # Update open position remaining amounts
+                    open_pos['remaining_volume'] = max(0.0, remaining_vol - close_volume)
+                    open_pos['remaining_commission'] = remaining_commission - alloc_comm
+                    open_pos['remaining_swap'] = remaining_swap - alloc_swap
+                    open_pos['remaining_profit'] = remaining_profit - alloc_profit
+
+                gross_profit = close_profit + alloc_profit
+                total_comm = close_comm + alloc_comm
+                total_swap = close_swap + alloc_swap
 
                 trades.append(Trade(
-                    ticket=open_pos['ticket'],
-                    symbol=open_pos['symbol'],
-                    trade_type=open_pos['trade_type'],
-                    volume=open_pos['volume'],
-                    open_time=open_pos['open_time'],
+                    ticket=ticket,
+                    symbol=symbol,
+                    trade_type=open_pos.get('trade_type') or expected_open_type or deal_type,
+                    volume=close_volume,
+                    open_time=open_pos.get('open_time', deal_time),
                     close_time=deal_time,
-                    open_price=open_pos['open_price'],
+                    open_price=open_pos.get('open_price', price),
                     close_price=price,
-                    commission=commission,
-                    swap=swap,
-                    gross_profit=profit,
-                    net_profit=profit + commission + swap,
+                    commission=total_comm,
+                    swap=total_swap,
+                    gross_profit=gross_profit,
+                    net_profit=gross_profit + total_comm + total_swap,
                 ))
                 final_balance = balance
 
@@ -414,3 +524,168 @@ def split_trades_by_date(
             after.append(trade)
 
     return before, after
+
+
+def compute_holding_time_seconds(open_time: datetime, close_time: datetime) -> int:
+    """Calculate holding time in seconds."""
+    if open_time and close_time and close_time > open_time:
+        delta = close_time - open_time
+        return int(delta.total_seconds())
+    return 0
+
+
+def generate_profit_histogram(trades: List[Trade], bucket_count: int = 20) -> dict:
+    """
+    Generate profit distribution histogram data for Chart.js.
+
+    Returns:
+        Dict with 'labels' (bucket ranges) and 'values' (counts)
+    """
+    if not trades:
+        return {'labels': [], 'values': [], 'colors': []}
+
+    profits = [t.net_profit for t in trades]
+    min_profit = min(profits)
+    max_profit = max(profits)
+
+    if min_profit == max_profit:
+        return {
+            'labels': [f'{min_profit:.0f}'],
+            'values': [len(profits)],
+            'colors': ['#198754' if min_profit >= 0 else '#dc3545']
+        }
+
+    # Create buckets
+    bucket_size = (max_profit - min_profit) / bucket_count
+    buckets = [0] * bucket_count
+    labels = []
+    colors = []
+
+    for i in range(bucket_count):
+        bucket_min = min_profit + i * bucket_size
+        bucket_max = bucket_min + bucket_size
+        labels.append(f'{bucket_min:.0f}')
+        # Color: green for positive buckets, red for negative
+        mid = (bucket_min + bucket_max) / 2
+        colors.append('#198754' if mid >= 0 else '#dc3545')
+
+    for profit in profits:
+        bucket_idx = int((profit - min_profit) / bucket_size)
+        bucket_idx = min(bucket_idx, bucket_count - 1)  # Handle edge case
+        buckets[bucket_idx] += 1
+
+    return {
+        'labels': labels,
+        'values': buckets,
+        'colors': colors,
+        'min': min_profit,
+        'max': max_profit,
+    }
+
+
+def generate_mfe_mae_scatter(trades: List[Trade]) -> List[dict]:
+    """
+    Generate MFE/MAE scatter plot data for Chart.js.
+
+    If MFE/MAE not available, estimate from trade profit as:
+    - MFE: max(profit, 0) for winning trades
+    - MAE: min(profit, 0) for losing trades
+
+    Returns:
+        List of {x: MAE, y: MFE, profit: net_profit} dicts
+    """
+    data = []
+    for t in trades:
+        # If MFE/MAE stored, use them; otherwise estimate
+        mfe = t.mfe if t.mfe != 0 else max(t.net_profit, 0)
+        mae = t.mae if t.mae != 0 else min(t.net_profit, 0)
+
+        data.append({
+            'x': mae,  # MAE (negative or zero)
+            'y': mfe,  # MFE (positive or zero)
+            'profit': t.net_profit,
+        })
+    return data
+
+
+def generate_holding_time_distribution(trades: List[Trade], bucket_count: int = 10) -> dict:
+    """
+    Generate holding time distribution histogram data for Chart.js.
+
+    Returns:
+        Dict with 'labels' (time ranges) and 'values' (counts)
+    """
+    if not trades:
+        return {'labels': [], 'values': []}
+
+    # Calculate holding times if not already set
+    holding_times = []
+    for t in trades:
+        if t.holding_seconds > 0:
+            holding_times.append(t.holding_seconds)
+        elif t.open_time and t.close_time:
+            seconds = compute_holding_time_seconds(t.open_time, t.close_time)
+            holding_times.append(seconds)
+
+    if not holding_times:
+        return {'labels': [], 'values': []}
+
+    min_time = min(holding_times)
+    max_time = max(holding_times)
+
+    if min_time == max_time:
+        return {
+            'labels': [_format_duration(min_time)],
+            'values': [len(holding_times)]
+        }
+
+    # Create buckets
+    bucket_size = (max_time - min_time) / bucket_count
+    if bucket_size == 0:
+        bucket_size = 1
+    buckets = [0] * bucket_count
+    labels = []
+
+    for i in range(bucket_count):
+        bucket_start = min_time + i * bucket_size
+        labels.append(_format_duration(bucket_start))
+
+    for ht in holding_times:
+        bucket_idx = int((ht - min_time) / bucket_size)
+        bucket_idx = min(bucket_idx, bucket_count - 1)
+        buckets[bucket_idx] += 1
+
+    return {
+        'labels': labels,
+        'values': buckets,
+        'min_seconds': min_time,
+        'max_seconds': max_time,
+    }
+
+
+def _format_duration(seconds: int) -> str:
+    """Format seconds into human readable duration."""
+    if seconds < 60:
+        return f'{seconds}s'
+    elif seconds < 3600:
+        return f'{seconds // 60}m'
+    elif seconds < 86400:
+        return f'{seconds // 3600}h'
+    else:
+        return f'{seconds // 86400}d'
+
+
+def generate_chart_data(trades: List[Trade]) -> dict:
+    """
+    Generate all chart data for the dashboard.
+
+    Returns dict with:
+        - profit_histogram: Profit distribution
+        - mfe_mae: MFE/MAE scatter data
+        - holding_times: Holding time distribution
+    """
+    return {
+        'profit_histogram': generate_profit_histogram(trades),
+        'mfe_mae': generate_mfe_mae_scatter(trades),
+        'holding_times': generate_holding_time_distribution(trades),
+    }

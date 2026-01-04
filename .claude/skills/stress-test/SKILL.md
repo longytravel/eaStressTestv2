@@ -12,7 +12,7 @@ Run comprehensive stress tests on MetaTrader 5 Expert Advisors.
 
 ## What This Does
 
-Executes an 11-step stress testing workflow:
+Executes an 11-step stress testing workflow (plus optional post-step stress scenarios):
 
 | Step | Name | Gate | Notes |
 |------|------|------|-------|
@@ -30,6 +30,9 @@ Executes an 11-step stress testing workflow:
 | 9 | Backtest Robust | PF >= 1.5, DD <= 30% | |
 | 10 | Monte Carlo | Ruin <= 5%, Conf >= 70% | |
 | 11 | Generate Reports | Dashboard opens | |
+| 12 | Stress Scenarios (Optional) | N/A | Spread/latency scenarios + 30d tick validation |
+| 13 | Forward Windows (Optional) | N/A | Time-sliced performance windows (in-sample/forward + recent windows) |
+| 14 | Multi-Pair Runs (Optional) | N/A | Re-run full workflow per symbol (optimized per pair) |
 
 ## Interactive Flow
 
@@ -150,6 +153,14 @@ opt_ranges = [
 >>> Wide params: 27 set | Optimization: 32 params
 result = runner.continue_with_params(wide_params, opt_ranges)
 ```
+
+### Optional: Auto-select passes (no LLM)
+
+For unattended runs (batch / multi-pair), you can enable score-based auto selection:
+- `settings.AUTO_STATS_ANALYSIS=True`
+- `settings.AUTO_STATS_TOP_N=20`
+
+This uses the same composite score as the leaderboard to pick the top passes for Step 9.
 
 ### Key Analysis Rules for Claude:
 
@@ -274,7 +285,16 @@ Offer clear options:
 2. **Suggest improvements** - Invoke `/ea-improver`
 3. **Test another EA** - Return to discovery
 4. **Compare runs** - Show historical results
-5. **Exit** - End session
+5. **Run stress scenarios** - Optional Step 12 (spread/latency/tick validation)
+6. **Exit** - End session
+
+If `AUTO_RUN_STRESS_SCENARIOS=False` in `settings.py`, you can run Step 12 after a workflow completes:
+
+```python
+from engine.runner import WorkflowRunner
+runner = WorkflowRunner.from_workflow_id(workflow_id)
+runner.run_stress_scenarios_only()
+```
 
 ## Integration with Other Skills
 

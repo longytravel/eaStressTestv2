@@ -31,7 +31,7 @@
         }
 
         .container {
-            max-width: 1400px;
+            max-width: 1600px;
             margin: 0 auto;
             padding: 20px;
         }
@@ -82,7 +82,7 @@
 
         .grid-full { grid-column: 1 / -1; }
 
-        @media (max-width: 1024px) {
+        @media (max-width: 1200px) {
             .grid { grid-template-columns: 1fr; }
         }
 
@@ -148,7 +148,7 @@
 
         /* Pass Table */
         .pass-table-container {
-            max-height: 400px;
+            max-height: 350px;
             overflow-y: auto;
             border: 1px solid var(--border);
             border-radius: 4px;
@@ -178,9 +178,14 @@
         }
 
         .pass-table th:hover { background: #e9ecef; }
+        .pass-table th.sorted { color: var(--accent); }
+        .pass-table th .sort-icon { margin-left: 4px; font-size: 0.7rem; }
 
         .pass-table td:first-child,
         .pass-table th:first-child { text-align: left; }
+
+        .pass-table td.left,
+        .pass-table th.left { text-align: left; }
 
         .pass-table tbody tr {
             cursor: pointer;
@@ -196,37 +201,111 @@
         /* KPI Grid */
         .kpi-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-            gap: 12px;
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+            gap: 10px;
         }
 
         .kpi-item {
-            padding: 12px;
+            padding: 10px;
             border: 1px solid var(--border);
             border-radius: 6px;
             text-align: center;
         }
 
         .kpi-value {
-            font-size: 1.25rem;
+            font-size: 1.1rem;
             font-weight: 700;
         }
 
         .kpi-label {
-            font-size: 0.7rem;
+            font-size: 0.65rem;
             color: var(--text-muted);
             text-transform: uppercase;
-            margin-top: 4px;
+            margin-top: 2px;
+        }
+
+        /* Accordion */
+        .accordion {
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            margin-top: 12px;
+        }
+
+        .accordion-item {
+            border-bottom: 1px solid var(--border);
+        }
+
+        .accordion-item:last-child {
+            border-bottom: none;
+        }
+
+        .accordion-header {
+            padding: 10px 14px;
+            background: var(--bg);
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            user-select: none;
+        }
+
+        .accordion-header:hover {
+            background: #e9ecef;
+        }
+
+        .accordion-header .icon {
+            transition: transform 0.2s;
+        }
+
+        .accordion-item.open .accordion-header .icon {
+            transform: rotate(180deg);
+        }
+
+        .accordion-content {
+            display: none;
+            padding: 12px 14px;
+            font-size: 0.8rem;
+        }
+
+        .accordion-item.open .accordion-content {
+            display: block;
+        }
+
+        /* Metric Row */
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .metric-row:last-child {
+            border-bottom: none;
+        }
+
+        .metric-label {
+            color: var(--text-muted);
+        }
+
+        .metric-value {
+            font-weight: 600;
         }
 
         /* Chart Container */
         .chart-container {
-            height: 300px;
+            height: 280px;
             position: relative;
         }
 
         .chart-container canvas {
             max-height: 100%;
+        }
+
+        .chart-container-small {
+            height: 220px;
         }
 
         /* Controls */
@@ -291,7 +370,7 @@
             display: flex;
             gap: 12px;
             flex-wrap: wrap;
-            padding: 12px;
+            padding: 10px;
             background: var(--bg);
             border-radius: 6px;
             margin-bottom: 12px;
@@ -335,6 +414,34 @@
         .checkbox-toggle input[type="checkbox"] {
             cursor: pointer;
         }
+
+        /* Charts Grid */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-top: 16px;
+        }
+
+        @media (max-width: 1200px) {
+            .charts-grid { grid-template-columns: 1fr; }
+        }
+
+        /* No data message */
+        .no-data {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--text-muted);
+            text-align: center;
+        }
+
+        .no-data-icon {
+            font-size: 2rem;
+            margin-bottom: 8px;
+        }
     </style>
 </head>
 <body>
@@ -348,6 +455,12 @@
             <div style="display: flex; gap: 8px;">
                 <button class="toggle-btn active" id="toggleInsights" onclick="toggleInsights()">
                     Claude Insights
+                </button>
+                <button class="action-btn secondary" onclick="window.location.href='../../boards/index.html'">
+                    Boards
+                </button>
+                <button class="action-btn secondary" onclick="window.location.href='../../leaderboard/index.html'">
+                    Leaderboard
                 </button>
                 <button class="action-btn primary" id="downloadSet" onclick="downloadSetFile(selectedPass)">
                     Download SET File
@@ -373,15 +486,15 @@
                 <div class="filters">
                     <div class="control-group">
                         <span class="control-label">Min Trades</span>
-                        <input type="number" class="control-input" id="filterMinTrades" placeholder="50" style="width: 80px;">
+                        <input type="number" class="control-input" id="filterMinTrades" placeholder="50" style="width: 70px;">
                     </div>
                     <div class="control-group">
                         <span class="control-label">Min PF</span>
-                        <input type="number" class="control-input" id="filterMinPF" placeholder="1.0" step="0.1" style="width: 80px;">
+                        <input type="number" class="control-input" id="filterMinPF" placeholder="1.0" step="0.1" style="width: 70px;">
                     </div>
                     <div class="control-group">
                         <span class="control-label">Max DD%</span>
-                        <input type="number" class="control-input" id="filterMaxDD" placeholder="30" style="width: 80px;">
+                        <input type="number" class="control-input" id="filterMaxDD" placeholder="30" style="width: 70px;">
                     </div>
                     <div class="checkbox-toggle">
                         <input type="checkbox" id="filterConsistent">
@@ -414,15 +527,77 @@
                     <span class="card-title">Selected Pass: <span id="selectedPassNum">-</span></span>
                 </div>
 
+                <!-- Core KPIs -->
                 <div class="kpi-grid" id="kpiGrid"></div>
 
-                <div style="margin-top: 16px;">
-                    <h4 style="font-size: 0.875rem; margin-bottom: 8px;">Monte Carlo</h4>
-                    <div class="kpi-grid" id="mcGrid"></div>
+                <!-- Accordion Sections -->
+                <div class="accordion" id="detailsAccordion">
+                    <!-- Monte Carlo -->
+                    <div class="accordion-item open" data-section="monteCarlo">
+                        <div class="accordion-header" onclick="toggleAccordion(this)">
+                            <span>Monte Carlo Simulation</span>
+                            <span class="icon">&#9660;</span>
+                        </div>
+                        <div class="accordion-content" id="mcSection"></div>
+                    </div>
+
+                    <!-- Advanced Statistics -->
+                    <div class="accordion-item" data-section="advanced">
+                        <div class="accordion-header" onclick="toggleAccordion(this)">
+                            <span>Advanced Statistics</span>
+                            <span class="icon">&#9660;</span>
+                        </div>
+                        <div class="accordion-content" id="advancedSection"></div>
+                    </div>
+
+                    <!-- Drawdown Analysis -->
+                    <div class="accordion-item" data-section="drawdown">
+                        <div class="accordion-header" onclick="toggleAccordion(this)">
+                            <span>Drawdown Analysis</span>
+                            <span class="icon">&#9660;</span>
+                        </div>
+                        <div class="accordion-content" id="drawdownSection"></div>
+                    </div>
+
+                    <!-- Win/Loss Streaks -->
+                    <div class="accordion-item" data-section="streaks">
+                        <div class="accordion-header" onclick="toggleAccordion(this)">
+                            <span>Win/Loss Streaks</span>
+                            <span class="icon">&#9660;</span>
+                        </div>
+                        <div class="accordion-content" id="streaksSection"></div>
+                    </div>
+
+                    <!-- Position Analysis -->
+                    <div class="accordion-item" data-section="positions">
+                        <div class="accordion-header" onclick="toggleAccordion(this)">
+                            <span>Position Analysis</span>
+                            <span class="icon">&#9660;</span>
+                        </div>
+                        <div class="accordion-content" id="positionsSection"></div>
+                    </div>
+
+                    <!-- Trading Costs -->
+                    <div class="accordion-item" data-section="costs">
+                        <div class="accordion-header" onclick="toggleAccordion(this)">
+                            <span>Trading Costs</span>
+                            <span class="icon">&#9660;</span>
+                        </div>
+                        <div class="accordion-content" id="costsSection"></div>
+                    </div>
+
+                    <!-- Long vs Short -->
+                    <div class="accordion-item" data-section="direction">
+                        <div class="accordion-header" onclick="toggleAccordion(this)">
+                            <span>Long vs Short</span>
+                            <span class="icon">&#9660;</span>
+                        </div>
+                        <div class="accordion-content" id="directionSection"></div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Equity Chart -->
+            <!-- Equity Chart (Full Width) -->
             <div class="card grid-full">
                 <div class="card-header">
                     <span class="card-title">Equity Curve</span>
@@ -438,29 +613,151 @@
                 <div class="chart-container" style="position: relative;">
                     <canvas id="equityChart"></canvas>
                     <div id="equityNoData" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; color: var(--text-muted);">
-                        <div style="font-size: 1.2rem; margin-bottom: 8px;">📊 No equity curve data</div>
-                        <div style="font-size: 0.85rem;">This pass was not backtested. Only top 10 passes have detailed equity curves.</div>
+                        <div style="font-size: 1.2rem; margin-bottom: 8px;">No equity curve data</div>
+                        <div style="font-size: 0.85rem;">This pass was not backtested. Only top 30 passes have detailed equity curves.</div>
                     </div>
                 </div>
             </div>
 
-            <!-- Scatter Plot -->
-            <div class="card">
-                <div class="card-header">
-                    <span class="card-title">In-Sample vs Forward</span>
+            <!-- Charts Row -->
+            <div class="charts-grid grid-full">
+                <!-- Profit Distribution -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Profit Distribution</span>
+                    </div>
+                    <div class="chart-container chart-container-small">
+                        <canvas id="profitHistogram"></canvas>
+                    </div>
                 </div>
-                <div class="chart-container">
-                    <canvas id="scatterChart"></canvas>
+
+                <!-- MFE/MAE Scatter -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">MFE/MAE Analysis</span>
+                    </div>
+                    <div class="chart-container chart-container-small">
+                        <canvas id="mfeMaeChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Holding Time Distribution -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Holding Time Distribution</span>
+                    </div>
+                    <div class="chart-container chart-container-small">
+                        <canvas id="holdingTimeChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- In-Sample vs Forward Scatter -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">In-Sample vs Forward</span>
+                    </div>
+                    <div class="chart-container chart-container-small">
+                        <canvas id="scatterChart"></canvas>
+                    </div>
                 </div>
             </div>
 
             <!-- Optimization Summary -->
-            <div class="card">
+            <div class="card grid-full">
                 <div class="card-header">
                     <span class="card-title">Optimization Summary</span>
                 </div>
                 <div class="stats-row" id="optSummary"></div>
                 <div id="optInsights" style="font-size: 0.8rem; color: var(--text-muted);"></div>
+            </div>
+
+            <!-- Stress Scenarios (post-step) -->
+            <div class="card grid-full" id="stressCard" style="display: none;">
+                <div class="card-header">
+                    <span class="card-title">Stress Scenarios</span>
+                </div>
+                <div class="stats-row" id="stressBaseline"></div>
+                <div class="filters" id="stressFilters" style="margin-top: 10px;">
+                    <div class="control-group">
+                        <span class="control-label">Window</span>
+                        <select class="control-input" id="stressWindowFilter" style="width: 160px;"></select>
+                    </div>
+                    <div class="control-group">
+                        <span class="control-label">Model</span>
+                        <select class="control-input" id="stressModelFilter" style="width: 130px;">
+                            <option value="all">All</option>
+                            <option value="1">OHLC (1m)</option>
+                            <option value="0">Tick</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <span class="control-label">Variant</span>
+                        <select class="control-input" id="stressVariantFilter" style="width: 120px;">
+                            <option value="all">All</option>
+                            <option value="base">Base</option>
+                            <option value="overlay">Overlay</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <span class="control-label">Search</span>
+                        <input type="text" class="control-input" id="stressSearch" placeholder="scenario..." style="width: 220px;">
+                    </div>
+                    <button class="action-btn secondary" onclick="resetStressFilters()">Reset</button>
+                </div>
+                <div class="pass-table-container" style="max-height: 260px; margin-top: 10px;">
+                    <table class="pass-table" id="stressTable">
+                        <thead>
+                            <tr>
+                                <th data-sort="scenario">Scenario</th>
+                                <th data-sort="window" class="left">Window</th>
+                                <th data-sort="model">Model</th>
+                                <th data-sort="variant">Variant</th>
+                                <th data-sort="latency">Latency</th>
+                                <th data-sort="costs" class="left">Costs</th>
+                                <th data-sort="profit">Profit</th>
+                                <th data-sort="pf">PF</th>
+                                <th data-sort="dd">DD%</th>
+                                <th data-sort="trades">Trades</th>
+                                <th data-sort="hq">HQ%</th>
+                                <th data-sort="tick_files_ok">Tick Files</th>
+                            </tr>
+                        </thead>
+                        <tbody id="stressBody"></tbody>
+                    </table>
+                </div>
+                <div id="stressNotes" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 10px;"></div>
+            </div>
+
+            <!-- Forward Windows (post-step) -->
+            <div class="card grid-full" id="forwardWindowsCard" style="display: none;">
+                <div class="card-header">
+                    <span class="card-title">Forward Windows</span>
+                </div>
+                <div class="pass-table-container" style="max-height: 260px; margin-top: 10px;">
+                    <table class="pass-table" id="forwardWindowsTable">
+                        <thead>
+                            <tr>
+                                <th class="left" data-sort="window">Window</th>
+                                <th class="left" data-sort="range">Range</th>
+                                <th data-sort="profit">Profit</th>
+                                <th data-sort="pf">PF</th>
+                                <th data-sort="dd">DD%</th>
+                                <th data-sort="trades">Trades</th>
+                                <th data-sort="win">Win%</th>
+                            </tr>
+                        </thead>
+                        <tbody id="forwardWindowsBody"></tbody>
+                    </table>
+                </div>
+                <div id="forwardWindowsNotes" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 10px;"></div>
+            </div>
+
+            <!-- Multi-pair Runs (post-step) -->
+            <div class="card grid-full" id="multiPairCard" style="display: none;">
+                <div class="card-header">
+                    <span class="card-title">Multi-Pair Runs</span>
+                </div>
+                <div id="multiPairBody" style="font-size: 0.875rem; color: var(--text);"></div>
             </div>
         </div>
 
@@ -476,19 +773,82 @@
         let selectedPass = DATA.selected_pass || (DATA.pass_list && DATA.pass_list[0]);
         let equityChart = null;
         let scatterChart = null;
+        let profitHistogramChart = null;
+        let mfeMaeChart = null;
+        let holdingTimeChart = null;
         let currentSort = { key: 'profit', desc: true };
+        let stressSort = { key: 'profit', desc: true };
+        let forwardSort = { key: 'profit', desc: true };
+        let stressScenarioState = null;
+        let forwardWindowsState = null;
+
+        function sortRows(rows, sortState, valueFn) {
+            const copy = [...(rows || [])];
+            const key = sortState.key;
+            const desc = !!sortState.desc;
+
+            const cmp = (a, b) => {
+                const av = valueFn(a, key);
+                const bv = valueFn(b, key);
+                if (av == null && bv == null) return 0;
+                if (av == null) return 1;
+                if (bv == null) return -1;
+                if (typeof av === 'boolean' || typeof bv === 'boolean') {
+                    const ar = av === true ? 2 : (av === false ? 1 : 0);
+                    const br = bv === true ? 2 : (bv === false ? 1 : 0);
+                    return ar - br;
+                }
+                if (typeof av === 'number' && typeof bv === 'number') return av - bv;
+                return String(av).localeCompare(String(bv));
+            };
+
+            copy.sort((a, b) => desc ? -cmp(a, b) : cmp(a, b));
+            return copy;
+        }
+
+        function attachSortHandlers(tableSelector, sortState, rerender) {
+            const table = document.querySelector(tableSelector);
+            if (!table) return;
+            table.querySelectorAll('th[data-sort]').forEach(th => {
+                th.classList.add('sortable');
+                th.addEventListener('click', () => {
+                    const key = th.dataset.sort;
+                    if (!key) return;
+                    if (sortState.key === key) sortState.desc = !sortState.desc;
+                    else { sortState.key = key; sortState.desc = true; }
+                    rerender();
+                    updateSortIcons(tableSelector, sortState);
+                });
+            });
+            updateSortIcons(tableSelector, sortState);
+        }
+
+        function updateSortIcons(tableSelector, sortState) {
+            const table = document.querySelector(tableSelector);
+            if (!table) return;
+            table.querySelectorAll('th[data-sort]').forEach(th => {
+                th.classList.toggle('sorted', th.dataset.sort === sortState.key);
+                th.querySelectorAll('.sort-icon').forEach(n => n.remove());
+                if (th.dataset.sort === sortState.key) {
+                    th.insertAdjacentHTML('beforeend', `<span class="sort-icon">${sortState.desc ? '&darr;' : '&uarr;'}</span>`);
+                }
+            });
+        }
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
-            initHeader();
-            initClaudeSection();
-            initPassTable();
-            initCharts();
-            initOptSummary();
+             initHeader();
+             initClaudeSection();
+             initPassTable();
+             initCharts();
+             initOptSummary();
+             initStressScenarios();
+             initForwardWindows();
+             initMultiPairRuns();
 
-            if (selectedPass) {
-                selectPass(selectedPass);
-            }
+             if (selectedPass) {
+                 selectPass(selectedPass);
+             }
 
             // Set up filter listeners
             document.getElementById('filterMinTrades').addEventListener('input', filterPasses);
@@ -527,6 +887,11 @@
             btn.classList.toggle('active');
         }
 
+        function toggleAccordion(header) {
+            const item = header.parentElement;
+            item.classList.toggle('open');
+        }
+
         function initPassTable() {
             const passes = DATA.passes || {};
             const tbody = document.getElementById('passTableBody');
@@ -562,8 +927,6 @@
                 const trades = bt.total_trades || 0;
                 const pf = bt.profit_factor || 0;
                 const dd = bt.max_drawdown_pct || 0;
-                const isProfit = (eq.in_sample?.length > 0 || p.opt?.in_profit > 0);
-                const fwdProfit = (eq.forward?.length > 0 || p.opt?.fwd_profit > 0);
                 const isConsistent = p.opt?.in_profit > 0 && p.opt?.fwd_profit > 0;
 
                 if (trades < minTrades) return false;
@@ -658,14 +1021,17 @@
             if (!pass) return;
 
             updateKPIs(pass);
+            updateAccordionSections(pass);
             updateEquityChart();
+            updateProfitHistogram(pass);
+            updateMfeMaeChart(pass);
+            updateHoldingTimeChart(pass);
             updateScatterHighlight(passNum);
         }
 
         function updateKPIs(pass) {
             const bt = pass.bt || {};
-            const mc = pass.monte_carlo || {};
-            const split = bt.split || {};
+            const dq = bt.data_quality || {};
 
             document.getElementById('kpiGrid').innerHTML = `
                 <div class="kpi-item">
@@ -692,29 +1058,107 @@
                     <div class="kpi-value">${(bt.win_rate || 0).toFixed(1)}%</div>
                     <div class="kpi-label">Win Rate</div>
                 </div>
+                <div class="kpi-item">
+                    <div class="kpi-value">${(dq.history_quality_pct || 0).toFixed(0)}%</div>
+                    <div class="kpi-label">History Quality</div>
+                </div>
+                <div class="kpi-item">
+                    <div class="kpi-value">${(dq.ticks || 0).toLocaleString()}</div>
+                    <div class="kpi-label">Ticks</div>
+                </div>
+            `;
+        }
+
+        function updateAccordionSections(pass) {
+            const mc = pass.monte_carlo || {};
+            const adv = pass.advanced || {};
+            const dd = pass.drawdown || {};
+            const streaks = pass.streaks || {};
+            const pos = pass.positions || {};
+            const costs = pass.costs || {};
+            const dir = pass.direction || {};
+            const ht = pass.holding_times || {};
+
+            // Monte Carlo
+            document.getElementById('mcSection').innerHTML = `
+                <div class="kpi-grid">
+                    <div class="kpi-item">
+                        <div class="kpi-value" style="color: ${mc.confidence >= 70 ? 'var(--good)' : 'var(--bad)'}">
+                            ${(mc.confidence || 0).toFixed(1)}%
+                        </div>
+                        <div class="kpi-label">Confidence</div>
+                    </div>
+                    <div class="kpi-item">
+                        <div class="kpi-value" style="color: ${mc.ruin_probability <= 5 ? 'var(--good)' : 'var(--bad)'}">
+                            ${(mc.ruin_probability || 0).toFixed(1)}%
+                        </div>
+                        <div class="kpi-label">Ruin Risk</div>
+                    </div>
+                    <div class="kpi-item">
+                        <div class="kpi-value">${formatMoney(mc.median_profit)}</div>
+                        <div class="kpi-label">Median</div>
+                    </div>
+                    <div class="kpi-item">
+                        <div class="kpi-value">${formatMoney(mc.worst_5pct)}</div>
+                        <div class="kpi-label">Worst 5%</div>
+                    </div>
+                </div>
             `;
 
-            document.getElementById('mcGrid').innerHTML = `
-                <div class="kpi-item">
-                    <div class="kpi-value" style="color: ${mc.confidence >= 70 ? 'var(--good)' : 'var(--bad)'}">
-                        ${(mc.confidence || 0).toFixed(1)}%
-                    </div>
-                    <div class="kpi-label">Confidence</div>
-                </div>
-                <div class="kpi-item">
-                    <div class="kpi-value" style="color: ${mc.ruin_probability <= 5 ? 'var(--good)' : 'var(--bad)'}">
-                        ${(mc.ruin_probability || 0).toFixed(1)}%
-                    </div>
-                    <div class="kpi-label">Ruin Risk</div>
-                </div>
-                <div class="kpi-item">
-                    <div class="kpi-value">${formatMoney(mc.median_profit)}</div>
-                    <div class="kpi-label">Median</div>
-                </div>
-                <div class="kpi-item">
-                    <div class="kpi-value">${formatMoney(mc.worst_5pct)}</div>
-                    <div class="kpi-label">Worst 5%</div>
-                </div>
+            // Advanced Statistics
+            document.getElementById('advancedSection').innerHTML = `
+                <div class="metric-row"><span class="metric-label">Z-Score</span><span class="metric-value">${(adv.z_score || 0).toFixed(2)}</span></div>
+                <div class="metric-row"><span class="metric-label">Z-Score Confidence</span><span class="metric-value">${(adv.z_score_confidence || 0).toFixed(1)}%</span></div>
+                <div class="metric-row"><span class="metric-label">AHPR</span><span class="metric-value">${(adv.ahpr || 0).toFixed(4)}</span></div>
+                <div class="metric-row"><span class="metric-label">GHPR</span><span class="metric-value">${(adv.ghpr || 0).toFixed(4)}</span></div>
+                <div class="metric-row"><span class="metric-label">LR Correlation</span><span class="metric-value">${(adv.lr_correlation || 0).toFixed(3)}</span></div>
+                <div class="metric-row"><span class="metric-label">LR Standard Error</span><span class="metric-value">${formatMoney(adv.lr_standard_error)}</span></div>
+            `;
+
+            // Drawdown Analysis
+            document.getElementById('drawdownSection').innerHTML = `
+                <div class="metric-row"><span class="metric-label">Balance DD Absolute</span><span class="metric-value">${formatMoney(dd.balance_dd_abs)}</span></div>
+                <div class="metric-row"><span class="metric-label">Balance DD Maximum</span><span class="metric-value">${formatMoney(dd.balance_dd_max)}</span></div>
+                <div class="metric-row"><span class="metric-label">Balance DD Relative</span><span class="metric-value">${(dd.balance_dd_rel || 0).toFixed(2)}%</span></div>
+                <div class="metric-row"><span class="metric-label">Equity DD Absolute</span><span class="metric-value">${formatMoney(dd.equity_dd_abs)}</span></div>
+                <div class="metric-row"><span class="metric-label">Equity DD Maximum</span><span class="metric-value">${formatMoney(dd.equity_dd_max)}</span></div>
+                <div class="metric-row"><span class="metric-label">Equity DD Relative</span><span class="metric-value">${(dd.equity_dd_rel || 0).toFixed(2)}%</span></div>
+            `;
+
+            // Streaks
+            document.getElementById('streaksSection').innerHTML = `
+                <div class="metric-row"><span class="metric-label">Max Consecutive Wins</span><span class="metric-value">${streaks.max_consecutive_wins || 0}</span></div>
+                <div class="metric-row"><span class="metric-label">Max Consecutive Losses</span><span class="metric-value">${streaks.max_consecutive_losses || 0}</span></div>
+                <div class="metric-row"><span class="metric-label">Max Consecutive Profit</span><span class="metric-value">${formatMoney(streaks.max_consecutive_profit)}</span></div>
+                <div class="metric-row"><span class="metric-label">Max Consecutive Loss</span><span class="metric-value">${formatMoney(streaks.max_consecutive_loss)}</span></div>
+                <div class="metric-row"><span class="metric-label">Avg Consecutive Wins</span><span class="metric-value">${(streaks.avg_consecutive_wins || 0).toFixed(1)}</span></div>
+                <div class="metric-row"><span class="metric-label">Avg Consecutive Losses</span><span class="metric-value">${(streaks.avg_consecutive_losses || 0).toFixed(1)}</span></div>
+            `;
+
+            // Positions
+            document.getElementById('positionsSection').innerHTML = `
+                <div class="metric-row"><span class="metric-label">Largest Profit Trade</span><span class="metric-value">${formatMoney(pos.largest_profit_trade)}</span></div>
+                <div class="metric-row"><span class="metric-label">Largest Loss Trade</span><span class="metric-value">${formatMoney(pos.largest_loss_trade)}</span></div>
+                <div class="metric-row"><span class="metric-label">Avg Profit Trade</span><span class="metric-value">${formatMoney(pos.avg_profit_trade)}</span></div>
+                <div class="metric-row"><span class="metric-label">Avg Loss Trade</span><span class="metric-value">${formatMoney(pos.avg_loss_trade)}</span></div>
+                <div class="metric-row"><span class="metric-label">Min Holding Time</span><span class="metric-value">${ht.min_holding_time || '-'}</span></div>
+                <div class="metric-row"><span class="metric-label">Max Holding Time</span><span class="metric-value">${ht.max_holding_time || '-'}</span></div>
+                <div class="metric-row"><span class="metric-label">Avg Holding Time</span><span class="metric-value">${ht.avg_holding_time || '-'}</span></div>
+            `;
+
+            // Costs
+            document.getElementById('costsSection').innerHTML = `
+                <div class="metric-row"><span class="metric-label">Total Commission</span><span class="metric-value">${formatMoney(costs.total_commission)}</span></div>
+                <div class="metric-row"><span class="metric-label">Total Swap</span><span class="metric-value">${formatMoney(costs.total_swap)}</span></div>
+                <div class="metric-row"><span class="metric-label">Total Costs</span><span class="metric-value">${formatMoney((costs.total_commission || 0) + (costs.total_swap || 0))}</span></div>
+            `;
+
+            // Direction
+            document.getElementById('directionSection').innerHTML = `
+                <div class="metric-row"><span class="metric-label">Long Trades</span><span class="metric-value">${dir.long_trades || 0}</span></div>
+                <div class="metric-row"><span class="metric-label">Long Win %</span><span class="metric-value">${(dir.long_win_pct || 0).toFixed(1)}%</span></div>
+                <div class="metric-row"><span class="metric-label">Short Trades</span><span class="metric-value">${dir.short_trades || 0}</span></div>
+                <div class="metric-row"><span class="metric-label">Short Win %</span><span class="metric-value">${(dir.short_win_pct || 0).toFixed(1)}%</span></div>
             `;
         }
 
@@ -723,25 +1167,62 @@
             const equityCtx = document.getElementById('equityChart').getContext('2d');
             equityChart = new Chart(equityCtx, {
                 type: 'line',
-                data: {
-                    labels: [],
-                    datasets: []
-                },
+                data: { labels: [], datasets: [] },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false }
-                    },
+                    plugins: { legend: { display: false } },
                     scales: {
-                        x: {
-                            display: true,
-                            title: { display: true, text: 'Trade #' }
-                        },
-                        y: {
-                            display: true,
-                            title: { display: true, text: 'Equity' }
-                        }
+                        x: { display: true, title: { display: true, text: 'Trade #' } },
+                        y: { display: true, title: { display: true, text: 'Equity' } }
+                    }
+                }
+            });
+
+            // Profit Histogram
+            const histCtx = document.getElementById('profitHistogram').getContext('2d');
+            profitHistogramChart = new Chart(histCtx, {
+                type: 'bar',
+                data: { labels: [], datasets: [] },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { title: { display: true, text: 'Profit' } },
+                        y: { title: { display: true, text: 'Count' } }
+                    }
+                }
+            });
+
+            // MFE/MAE Scatter
+            const mfeMaeCtx = document.getElementById('mfeMaeChart').getContext('2d');
+            mfeMaeChart = new Chart(mfeMaeCtx, {
+                type: 'scatter',
+                data: { datasets: [] },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { title: { display: true, text: 'MAE (Worst)' } },
+                        y: { title: { display: true, text: 'MFE (Best)' } }
+                    }
+                }
+            });
+
+            // Holding Time
+            const htCtx = document.getElementById('holdingTimeChart').getContext('2d');
+            holdingTimeChart = new Chart(htCtx, {
+                type: 'bar',
+                data: { labels: [], datasets: [] },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { title: { display: true, text: 'Duration' } },
+                        y: { title: { display: true, text: 'Count' } }
                     }
                 }
             });
@@ -767,16 +1248,10 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false }
-                    },
+                    plugins: { legend: { display: false } },
                     scales: {
-                        x: {
-                            title: { display: true, text: 'In-Sample Profit' }
-                        },
-                        y: {
-                            title: { display: true, text: 'Forward Profit' }
-                        }
+                        x: { title: { display: true, text: 'In-Sample Profit' } },
+                        y: { title: { display: true, text: 'Forward Profit' } }
                     }
                 }
             });
@@ -862,6 +1337,71 @@
             equityChart.update();
         }
 
+        function updateProfitHistogram(pass) {
+            if (!profitHistogramChart) return;
+
+            const charts = pass.charts || {};
+            const hist = charts.profit_histogram || {};
+
+            if (!hist.labels || hist.labels.length === 0) {
+                profitHistogramChart.data.labels = [];
+                profitHistogramChart.data.datasets = [];
+                profitHistogramChart.update();
+                return;
+            }
+
+            profitHistogramChart.data.labels = hist.labels;
+            profitHistogramChart.data.datasets = [{
+                data: hist.values,
+                backgroundColor: hist.colors || 'rgba(13, 110, 253, 0.7)',
+            }];
+            profitHistogramChart.update();
+        }
+
+        function updateMfeMaeChart(pass) {
+            if (!mfeMaeChart) return;
+
+            const charts = pass.charts || {};
+            const mfeMae = charts.mfe_mae || [];
+
+            if (mfeMae.length === 0) {
+                mfeMaeChart.data.datasets = [];
+                mfeMaeChart.update();
+                return;
+            }
+
+            // Color points by profit (green = win, red = loss)
+            const colors = mfeMae.map(p => p.profit >= 0 ? 'rgba(25, 135, 84, 0.6)' : 'rgba(220, 53, 69, 0.6)');
+
+            mfeMaeChart.data.datasets = [{
+                data: mfeMae.map(p => ({ x: p.x, y: p.y })),
+                backgroundColor: colors,
+                pointRadius: 4,
+            }];
+            mfeMaeChart.update();
+        }
+
+        function updateHoldingTimeChart(pass) {
+            if (!holdingTimeChart) return;
+
+            const charts = pass.charts || {};
+            const ht = charts.holding_times || {};
+
+            if (!ht.labels || ht.labels.length === 0) {
+                holdingTimeChart.data.labels = [];
+                holdingTimeChart.data.datasets = [];
+                holdingTimeChart.update();
+                return;
+            }
+
+            holdingTimeChart.data.labels = ht.labels;
+            holdingTimeChart.data.datasets = [{
+                data: ht.values,
+                backgroundColor: 'rgba(108, 117, 125, 0.7)',
+            }];
+            holdingTimeChart.update();
+        }
+
         function updateScatterHighlight(passNum) {
             if (!scatterChart) return;
 
@@ -897,9 +1437,405 @@
             }
         }
 
+        function initStressScenarios() {
+            const stress = DATA.stress_scenarios || {};
+            const card = document.getElementById('stressCard');
+            if (!card) return;
+
+            const scenarios = stress.scenarios || [];
+            if (!Array.isArray(scenarios) || scenarios.length === 0) {
+                card.style.display = 'none';
+                return;
+            }
+
+            card.style.display = 'block';
+
+            const base = stress.baseline || {};
+            const baseSet = base.settings || {};
+            document.getElementById('stressBaseline').innerHTML = `
+                <div class="stat">
+                    <span class="stat-label">Pass:</span>
+                    <span class="stat-value">#${base.pass_num ?? '-'}</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Baseline Profit:</span>
+                    <span class="stat-value">${formatMoney(base.profit || 0)}</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Baseline PF:</span>
+                    <span class="stat-value">${(base.profit_factor || 0).toFixed(2)}</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Baseline DD%:</span>
+                    <span class="stat-value">${(base.max_drawdown_pct || 0).toFixed(1)}%</span>
+                </div>
+            `;
+
+            const windowSelect = document.getElementById('stressWindowFilter');
+            const modelSelect = document.getElementById('stressModelFilter');
+            const variantSelect = document.getElementById('stressVariantFilter');
+            const searchInput = document.getElementById('stressSearch');
+
+            const windowKey = (s) => (s?.window?.id ?? s?.period ?? '').toString();
+            const windowLabel = (s) => (s?.window?.label ?? windowKey(s) ?? '-').toString();
+            const windowRange = (set) => {
+                const from = set?.from_date || '';
+                const to = set?.to_date || '';
+                return (from && to) ? `${from} -> ${to}` : '';
+            };
+
+            // Populate window filter options
+            const windows = new Map();
+            scenarios.forEach(s => {
+                const set = s.settings || {};
+                const id = windowKey(s) || `${set.from_date || ''}_${set.to_date || ''}`;
+                if (!id) return;
+                const label = windowLabel(s) || id;
+                if (!windows.has(id)) windows.set(id, label);
+            });
+
+            windowSelect.innerHTML = '';
+            const addOpt = (el, value, text) => {
+                const opt = document.createElement('option');
+                opt.value = value;
+                opt.textContent = text;
+                el.appendChild(opt);
+            };
+            addOpt(windowSelect, 'all', 'All');
+            [...windows.entries()]
+                .sort((a, b) => a[1].localeCompare(b[1]))
+                .forEach(([id, label]) => addOpt(windowSelect, id, label));
+
+            stressScenarioState = { stress, scenarios, base, baseSet, elements: { windowSelect, modelSelect, variantSelect, searchInput } };
+
+            // Hook up listeners once
+            windowSelect.addEventListener('change', renderStressScenarios);
+            modelSelect.addEventListener('change', renderStressScenarios);
+            variantSelect.addEventListener('change', renderStressScenarios);
+            searchInput.addEventListener('input', renderStressScenarios);
+
+            attachSortHandlers('#stressTable', stressSort, renderStressScenarios);
+            renderStressScenarios();
+        }
+
+        function resetStressFilters() {
+            if (!stressScenarioState) return;
+            const { windowSelect, modelSelect, variantSelect, searchInput } = stressScenarioState.elements;
+            windowSelect.value = 'all';
+            modelSelect.value = 'all';
+            variantSelect.value = 'all';
+            searchInput.value = '';
+            renderStressScenarios();
+        }
+
+        function renderStressScenarios() {
+            if (!stressScenarioState) return;
+
+            const { scenarios, base, baseSet, elements, stress } = stressScenarioState;
+            const windowValue = elements.windowSelect.value || 'all';
+            const modelValue = elements.modelSelect.value || 'all';
+            const variantValue = elements.variantSelect.value || 'all';
+            const searchValue = (elements.searchInput.value || '').trim().toLowerCase();
+
+            const modelLabel = (m) => {
+                if (m === 0) return 'Tick';
+                if (m === 1) return 'OHLC (1m)';
+                if (m === 2) return 'Open';
+                return (m ?? '-').toString();
+            };
+
+            const eq = (a, b, eps = 1e-6) => Math.abs((Number(a) || 0) - (Number(b) || 0)) <= eps;
+            const sameWindowAsBaseline = (set) =>
+                !!baseSet.from_date && !!baseSet.to_date &&
+                set.from_date === baseSet.from_date &&
+                set.to_date === baseSet.to_date &&
+                (set.model ?? null) === (baseSet.model ?? null);
+
+            const filterMatch = (s) => {
+                const set = s.settings || {};
+                const wId = (s?.window?.id ?? s?.period ?? '').toString();
+
+                if (windowValue !== 'all' && wId !== windowValue) return false;
+                if (modelValue !== 'all' && String(set.model ?? '') !== modelValue) return false;
+                if (variantValue !== 'all' && String(s.variant || 'base') !== variantValue) return false;
+
+                if (searchValue) {
+                    const hay = `${s.label || ''} ${s.id || ''} ${wId} ${(s.window?.label || '')}`.toLowerCase();
+                    if (!hay.includes(searchValue)) return false;
+                }
+                return true;
+            };
+
+            const filtered = scenarios.filter(filterMatch);
+
+            const stressSortValue = (s, key) => {
+                const r = s?.result || {};
+                const set = s?.settings || {};
+                const wId = (s?.window?.id ?? s?.period ?? '').toString();
+                const wLabel = (s?.window?.label ?? wId ?? '-').toString();
+
+                const overlaySpread = (set.overlay_spread_pips ?? set.overlaySpreadPips ?? null);
+                const overlaySlip = (set.overlay_slippage_pips ?? set.overlaySlippagePips ?? null);
+                const overlaySides = (set.overlay_slippage_sides ?? set.overlaySlippageSides ?? null);
+
+                if (key === 'costs') {
+                    if (overlaySpread != null || overlaySlip != null) return (Number(overlaySpread) || 0) * 1000 + (Number(overlaySlip) || 0) * 10 + (Number(overlaySides) || 0);
+                    if (set.spread_points != null) return Number(set.spread_points) || 0;
+                    return -1;
+                }
+
+                switch (key) {
+                    case 'scenario': return (s.label || s.id || '').toString();
+                    case 'window': return wLabel;
+                    case 'model': return Number(set.model);
+                    case 'variant': return String(s.variant || 'base');
+                    case 'latency': return Number(set.execution_latency_ms) || 0;
+                    case 'profit': return Number(r.profit) || 0;
+                    case 'pf': return Number(r.profit_factor) || 0;
+                    case 'dd': return Number(r.max_drawdown_pct) || 0;
+                    case 'trades': return Number(r.total_trades) || 0;
+                    case 'hq': return Number(r.history_quality_pct) || 0;
+                    case 'tick_files_ok': return r.tick_files_ok;
+                    default: return null;
+                }
+            };
+
+            const displayRows = sortRows(filtered, stressSort, stressSortValue);
+
+            // Group baselines by window+model (ignore overlays)
+            const groupKey = (set, wId) => `${wId || ''}|${set.from_date || ''}|${set.to_date || ''}|${set.model ?? ''}`;
+            const groupBaseline = {};
+            scenarios.forEach(s => {
+                if ((s.variant || 'base') === 'overlay') return;
+                const set = s.settings || {};
+                if (!set.from_date || !set.to_date) return;
+                const wId = (s?.window?.id ?? s?.period ?? '').toString();
+                const key = groupKey(set, wId);
+                const lat = Number(set.execution_latency_ms) || 0;
+                const spreadPts = Number(set.spread_points) || 0;
+                const rank = (lat * 1000000) + spreadPts;
+                const current = groupBaseline[key];
+                if (!current || rank < current.rank) {
+                    groupBaseline[key] = { rank, result: s.result || {}, settings: set };
+                }
+            });
+
+            const tbody = document.getElementById('stressBody');
+            tbody.innerHTML = '';
+
+            let noEffectCount = 0;
+            let tickQualityWarnings = 0;
+
+            displayRows.forEach(s => {
+                const r = s.result || {};
+                const set = s.settings || {};
+                const wId = (s?.window?.id ?? s?.period ?? '').toString();
+                const key = groupKey(set, wId);
+                const group = groupBaseline[key] || {};
+                const groupSet = group.settings || {};
+                const groupResult = group.result || {};
+
+                const tr = document.createElement('tr');
+                if (!s.success) tr.style.opacity = '0.6';
+
+                const winLabel = (s?.window?.label ?? wId ?? '-').toString();
+                const winRange = (set.from_date && set.to_date) ? `${set.from_date} → ${set.to_date}` : '';
+
+                const latency = (set.execution_latency_ms ?? null) !== null ? `${set.execution_latency_ms}ms` : '-';
+                const hq = (r.history_quality_pct ?? null) !== null ? `${(r.history_quality_pct || 0).toFixed(1)}%` : '-';
+                const variant = (s.variant || 'base') === 'overlay' ? 'Overlay' : 'Base';
+                const tickFiles = (() => {
+                    if (Number(set.model) !== 0) return '-';
+                    if (r.tick_files_ok === true) return '<span class="tag good" title="Tick files present for this window">FILES OK</span>';
+                    if (r.tick_files_ok === false) {
+                        const missing = Array.isArray(r.tick_files_missing) ? r.tick_files_missing : [];
+                        const label = missing.length ? `MISSING ${missing.length}` : 'MISSING';
+                        const title = missing.length ? `Missing months: ${missing.join(', ')}` : 'Missing tick files for this window';
+                        return `<span class="tag bad" title="${title}">${label}</span>`;
+                    }
+                    return '<span class="tag" title="Tick file coverage unknown">UNKNOWN</span>';
+                })();
+
+                const overlaySpread = set.overlay_spread_pips ?? null;
+                const overlaySlip = set.overlay_slippage_pips ?? null;
+                const overlaySides = set.overlay_slippage_sides ?? null;
+
+                let costText = '-';
+                if (overlaySpread != null || overlaySlip != null) {
+                    const sp = overlaySpread != null ? `${Number(overlaySpread).toFixed(0)}p` : '-';
+                    const sl = overlaySlip != null ? `${Number(overlaySlip).toFixed(0)}p` : '-';
+                    const sides = overlaySides != null ? `×${overlaySides}` : '';
+                    costText = `sp ${sp}, sl ${sl}${sides}`;
+                } else if ((set.spread_points ?? null) !== null) {
+                    costText = `${set.spread_points} pts`;
+                }
+
+                const overridesDiffer =
+                    (set.spread_points ?? null) !== (baseSet.spread_points ?? null) ||
+                    (set.execution_latency_ms ?? null) !== (baseSet.execution_latency_ms ?? null) ||
+                    (overlaySpread ?? null) !== (baseSet.overlay_spread_pips ?? null) ||
+                    (overlaySlip ?? null) !== (baseSet.overlay_slippage_pips ?? null) ||
+                    (overlaySides ?? null) !== (baseSet.overlay_slippage_sides ?? null);
+                const identicalToBaseline =
+                    sameWindowAsBaseline(set) &&
+                    eq(r.profit, base.profit, 1e-2) &&
+                    eq(r.profit_factor, base.profit_factor, 1e-4) &&
+                    eq(r.max_drawdown_pct, base.max_drawdown_pct, 1e-3) &&
+                    eq(r.total_trades, base.total_trades, 0);
+
+                const overridesDifferWithinGroup =
+                    (set.spread_points ?? null) !== (groupSet.spread_points ?? null) ||
+                    (set.execution_latency_ms ?? null) !== (groupSet.execution_latency_ms ?? null) ||
+                    (overlaySpread ?? null) !== (groupSet.overlay_spread_pips ?? null) ||
+                    (overlaySlip ?? null) !== (groupSet.overlay_slippage_pips ?? null) ||
+                    (overlaySides ?? null) !== (groupSet.overlay_slippage_sides ?? null);
+                const identicalToGroup =
+                    !!groupSet.from_date && !!groupSet.to_date &&
+                    eq(r.profit, groupResult.profit, 1e-2) &&
+                    eq(r.profit_factor, groupResult.profit_factor, 1e-4) &&
+                    eq(r.max_drawdown_pct, groupResult.max_drawdown_pct, 1e-3) &&
+                    eq(r.total_trades, groupResult.total_trades, 0);
+
+                const noEffect = (overridesDiffer && identicalToBaseline) || (overridesDifferWithinGroup && identicalToGroup);
+                if (noEffect) {
+                    noEffectCount += 1;
+                    tr.style.background = 'rgba(245, 158, 11, 0.08)';
+                    tr.title = 'Scenario settings appear to have no effect vs reference run';
+                }
+
+                if (set.model === 0 && (r.history_quality_pct || 0) < 99) {
+                    tickQualityWarnings += 1;
+                }
+
+                tr.innerHTML = `
+                    <td style="text-align: left;">${s.label || s.id || 'Scenario'}</td>
+                    <td style="text-align: left;">
+                        <div>${winLabel}</div>
+                        <div style="font-size: 0.7rem; color: var(--text-muted);">${sanitizeText(winRange)}</div>
+                    </td>
+                    <td>${modelLabel(set.model)}</td>
+                    <td>${variant}</td>
+                    <td>${latency}</td>
+                    <td style="text-align: left;">${costText}</td>
+                    <td>${formatMoney(r.profit || 0)}</td>
+                    <td>${(r.profit_factor || 0).toFixed(2)}</td>
+                    <td>${(r.max_drawdown_pct || 0).toFixed(1)}%</td>
+                    <td>${r.total_trades || 0}</td>
+                    <td>${hq}</td>
+                    <td>${tickFiles}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            const notes = [];
+            if (stress.skipped) notes.push(stress.reason || 'Stress scenarios skipped');
+            if (noEffectCount > 0) notes.push(`${noEffectCount} scenario(s) produced identical results despite different stress settings`);
+            if (tickQualityWarnings > 0) notes.push(`Tick-history quality < 99% on ${tickQualityWarnings} scenario(s)`);
+            document.getElementById('stressNotes').textContent = notes.join(' | ');
+        }
+
+        function initForwardWindows() {
+            const fw = DATA.forward_windows || {};
+            const card = document.getElementById('forwardWindowsCard');
+            if (!card) return;
+
+            const windows = fw.windows || [];
+            if (!Array.isArray(windows) || windows.length === 0) {
+                card.style.display = 'none';
+                return;
+            }
+
+            card.style.display = 'block';
+            forwardWindowsState = fw;
+            attachSortHandlers('#forwardWindowsTable', forwardSort, renderForwardWindows);
+            renderForwardWindows();
+        }
+
+        function renderForwardWindows() {
+            const fw = forwardWindowsState;
+            if (!fw) return;
+
+            const windows = fw.windows || [];
+            const tbody = document.getElementById('forwardWindowsBody');
+            tbody.innerHTML = '';
+
+            const valueFn = (w, key) => {
+                const m = w?.metrics || {};
+                const range = (w.from_date && w.to_date) ? `${w.from_date} -> ${w.to_date}` : '';
+                switch (key) {
+                    case 'window': return (w.label || w.id || '').toString();
+                    case 'range': return range;
+                    case 'profit': return Number(m.profit) || 0;
+                    case 'pf': return Number(m.profit_factor) || 0;
+                    case 'dd': return Number(m.max_drawdown_pct) || 0;
+                    case 'trades': return Number(m.total_trades) || 0;
+                    case 'win': return Number(m.win_rate) || 0;
+                    default: return null;
+                }
+            };
+
+            const displayRows = sortRows(windows, forwardSort, valueFn);
+            displayRows.forEach(w => {
+                const m = w.metrics || {};
+                const tr = document.createElement('tr');
+                const range = (w.from_date && w.to_date) ? `${w.from_date} -> ${w.to_date}` : '-';
+
+                tr.innerHTML = `
+                    <td class="left">${w.label || w.id || 'Window'}</td>
+                    <td class="left">${range}</td>
+                    <td>${formatMoney(m.profit || 0)}</td>
+                    <td>${(m.profit_factor || 0).toFixed(2)}</td>
+                    <td>${(m.max_drawdown_pct || 0).toFixed(1)}%</td>
+                    <td>${m.total_trades || 0}</td>
+                    <td>${(m.win_rate || 0).toFixed(1)}%</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            const notes = [];
+            if (fw.pass_num != null) notes.push(`Pass #${fw.pass_num}`);
+            if (fw.history_quality_pct != null) notes.push(`HQ ${(Number(fw.history_quality_pct) || 0).toFixed(1)}%`);
+            document.getElementById('forwardWindowsNotes').textContent = notes.join(' | ');
+        }
+
+        function initMultiPairRuns() {
+            const mp = DATA.multi_pair_runs || {};
+            const card = document.getElementById('multiPairCard');
+            if (!card) return;
+
+            const runs = mp.runs || [];
+            if (!Array.isArray(runs) || runs.length === 0) {
+                card.style.display = 'none';
+                return;
+            }
+
+            card.style.display = 'block';
+            const body = document.getElementById('multiPairBody');
+
+            body.innerHTML = runs.map(r => {
+                const sym = r.symbol || '-';
+                const wf = r.workflow_id;
+                const score = r.composite_score != null ? Number(r.composite_score).toFixed(1) : '-';
+                const status = r.status || '-';
+                const link = wf ? `../${wf}/index.html` : null;
+                const go = (r.go_live && r.go_live.go_live_ready === true) ? 'YES' : ((r.go_live && r.go_live.go_live_ready === false) ? 'NO' : '-');
+
+                return `
+                    <div style="padding: 8px 0; border-bottom: 1px solid var(--border);">
+                        <div>
+                            ${link ? `<a href="${link}">${sym}</a>` : `<span>${sym}</span>`}
+                            <span style="color: var(--text-muted); font-size: 0.8rem; margin-left: 8px;">Score ${score} | Go-live ${go} | ${status}</span>
+                        </div>
+                        ${wf ? `<div style="color: var(--text-muted); font-size: 0.75rem;">${wf}</div>` : ''}
+                        ${r.error ? `<div style="color: var(--bad); font-size: 0.8rem;">${r.error}</div>` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
         // Utility functions
         function formatMoney(value) {
-            if (value == null) return '-';
+            if (value == null || value === undefined) return '-';
             const sign = value >= 0 ? '' : '-';
             return sign + '£' + Math.abs(value).toFixed(0);
         }
@@ -918,6 +1854,90 @@
             }
 
             const params = pass.parameters || {};
+            const inputDefs = Array.isArray(DATA.ea_inputs) ? DATA.ea_inputs : [];
+
+            const parseBool = (v) => {
+                if (v === true || v === false) return v;
+                if (v == null) return false;
+                const s = String(v).trim().toLowerCase();
+                if (['true', '1', 'yes', 'y'].includes(s)) return true;
+                if (['false', '0', 'no', 'n'].includes(s)) return false;
+                return Boolean(Number(v));
+            };
+
+            const parseNumber = (v) => {
+                if (typeof v === 'number') return v;
+                if (v == null) return 0;
+                const s = String(v).trim();
+                if (!s) return 0;
+                const n = Number(s);
+                return Number.isFinite(n) ? n : 0;
+            };
+
+            const normalizeDefault = (def) => {
+                const base = String(def?.base_type || def?.type || '').toLowerCase();
+                const raw = def?.default;
+                const s = raw == null ? '' : String(raw).trim();
+
+                if (base.includes('bool')) return parseBool(s);
+                if (base.includes('int') || base.includes('long')) return Math.trunc(parseNumber(s));
+                if (base.includes('double') || base.includes('float')) return parseNumber(s);
+
+                if (base.includes('enum')) {
+                    const key = s.toUpperCase();
+                    const appliedPrice = {
+                        'PRICE_CLOSE': 0,
+                        'PRICE_OPEN': 1,
+                        'PRICE_HIGH': 2,
+                        'PRICE_LOW': 3,
+                        'PRICE_MEDIAN': 4,
+                        'PRICE_TYPICAL': 5,
+                        'PRICE_WEIGHTED': 6,
+                    };
+                    if (appliedPrice[key] != null) return appliedPrice[key];
+                    const asNum = Number(s);
+                    return Number.isFinite(asNum) ? Math.trunc(asNum) : s;
+                }
+
+                if (base.includes('color')) {
+                    const key = s.toLowerCase();
+                    const colors = {
+                        'clrred': 255,
+                        'clrlime': 65280,
+                        'clrgreen': 32768,
+                        'clrblue': 16711680,
+                        'clrblack': 0,
+                        'clrwhite': 16777215,
+                    };
+                    if (colors[key] != null) return colors[key];
+                    if (s.startsWith('0x') || s.startsWith('0X')) {
+                        const n = Number.parseInt(s, 16);
+                        return Number.isFinite(n) ? n : s;
+                    }
+                    const asNum = Number(s);
+                    return Number.isFinite(asNum) ? Math.trunc(asNum) : s;
+                }
+
+                return s;
+            };
+
+            const formatValue = (def, value) => {
+                const base = String(def?.base_type || def?.type || '').toLowerCase();
+                if (base.includes('bool')) return parseBool(value) ? 'true' : 'false';
+                if (base.includes('int') || base.includes('long') || base.includes('enum') || base.includes('color')) {
+                    const n = parseNumber(value);
+                    return Number.isFinite(n) ? String(Math.trunc(n)) : String(value);
+                }
+                if (base.includes('double') || base.includes('float')) {
+                    const n = parseNumber(value);
+                    if (!Number.isFinite(n)) return String(value);
+                    return Number.isInteger(n) ? String(n) : n.toFixed(6).replace(/\.?0+$/, '');
+                }
+                if (typeof value === 'boolean') return value ? 'true' : 'false';
+                if (typeof value === 'number') return Number.isInteger(value) ? value.toString() : value.toFixed(6).replace(/\.?0+$/, '');
+                return String(value ?? '');
+            };
+
             const lines = [
                 '; MT5 Settings File',
                 '; EA: ' + DATA.ea_name,
@@ -928,19 +1948,39 @@
                 ''
             ];
 
-            for (const [name, value] of Object.entries(params)) {
-                if (['Pass', 'Forward Result', 'Back Result', 'Custom', 'Result'].includes(name)) {
-                    continue;
-                }
+            if (inputDefs.length > 0) {
+                const safety = DATA.safety || {};
+                inputDefs.forEach(def => {
+                    const name = def?.name;
+                    if (!name) return;
 
-                let formattedValue = value;
-                if (typeof value === 'boolean') {
-                    formattedValue = value ? 'true' : 'false';
-                } else if (typeof value === 'number') {
-                    formattedValue = Number.isInteger(value) ? value.toString() : value.toFixed(6).replace(/\.?0+$/, '');
-                }
+                    let value = (params[name] !== undefined) ? params[name] : normalizeDefault(def);
+                    if (name === 'EAStressSafety_MaxSpreadPips' && params[name] === undefined) value = (safety.max_spread_pips ?? value);
+                    if (name === 'EAStressSafety_MaxSlippagePips' && params[name] === undefined) value = (safety.max_slippage_pips ?? value);
+                    lines.push(name + '=' + formatValue(def, value));
+                });
 
-                lines.push(name + '=' + formattedValue);
+                Object.entries(params).forEach(([name, value]) => {
+                    if (['Pass', 'Forward Result', 'Back Result', 'Custom', 'Result'].includes(name)) return;
+                    if (inputDefs.some(d => d && d.name === name)) return;
+                    lines.push(name + '=' + String(value ?? ''));
+                });
+            } else {
+                for (const [name, value] of Object.entries(params)) {
+                    if (['Pass', 'Forward Result', 'Back Result', 'Custom', 'Result'].includes(name)) continue;
+                    lines.push(name + '=' + String(value ?? ''));
+                }
+            }
+
+            // Backwards compatibility: ensure safety inputs exist even if Step 3 list is missing.
+            const safety = DATA.safety || {};
+            const safetyParams = {
+                'EAStressSafety_MaxSpreadPips': (safety.max_spread_pips ?? 3.0),
+                'EAStressSafety_MaxSlippagePips': (safety.max_slippage_pips ?? 3.0),
+            };
+            for (const [name, value] of Object.entries(safetyParams)) {
+                if (lines.some(l => l.startsWith(name + '='))) continue;
+                lines.push(name + '=' + formatValue({ base_type: 'double' }, value));
             }
 
             const content = lines.join('\n');
@@ -954,6 +1994,18 @@
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
+        }
+        function sanitizeText(value) {
+            return String(value ?? '').replace(/[^\x20-\x7E]/g, '->');
+        }
+
+        // Final override: ensure currency symbol renders correctly even if a prior
+        // generator/template wrote a corrupted glyph.
+        function formatMoney(value) {
+            if (value == null || value === undefined) return '-';
+            const sign = value >= 0 ? '' : '-';
+            const pound = String.fromCharCode(163);
+            return sign + pound + Math.abs(value).toFixed(0);
         }
     </script>
 </body>

@@ -252,6 +252,8 @@
                     <span id="summaryText"></span>
                     <span>|</span>
                     <span id="lastUpdated"></span>
+                    <span>|</span>
+                    <a href="../boards/index.html">Boards</a>
                 </div>
             </div>
         </header>
@@ -323,6 +325,7 @@
                         <th data-sort="status">Status</th>
                         <th data-sort="score">Score</th>
                         <th data-sort="profit">Profit</th>
+                        <th data-sort="stress" title="Stress scenarios are run only for the workflow’s stress-tested pass (see tooltip per row).">Stress</th>
                         <th data-sort="pf">PF</th>
                         <th data-sort="dd">DD%</th>
                         <th data-sort="sharpe">Sharpe</th>
@@ -351,12 +354,22 @@
         let searchTerm = '';
         let currentSort = { key: 'score', desc: true };
 
+        function formatMoney(value) {
+            const num = Number(value) || 0;
+            const sign = num >= 0 ? '' : '-';
+            const pound = String.fromCharCode(163);
+            return sign + pound + Math.abs(num).toFixed(0);
+        }
+
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
             initSummary();
             initFilters();
             initTable();
             renderTable();
+            const passes = DATA.passes || [];
+            const bestProfit = passes.length ? Math.max(...passes.map(p => p.profit_num || 0)) : 0;
+            document.getElementById('bestProfit').textContent = formatMoney(bestProfit);
             document.getElementById('lastUpdated').textContent = `Updated: ${DATA.updated_at || '-'}`;
             document.getElementById('genDate').textContent = new Date().toLocaleString();
         });
@@ -429,7 +442,7 @@
 
                 if (th.dataset.sort === key) {
                     th.classList.add('sorted');
-                    th.innerHTML += `<span class="sort-icon">${currentSort.desc ? '▼' : '▲'}</span>`;
+                    th.innerHTML += `<span class="sort-icon">${currentSort.desc ? '&darr;' : '&uarr;'}</span>`;
                 }
             });
 
@@ -470,6 +483,7 @@
                         break;
                     case 'score': aVal = a.score_num || 0; bVal = b.score_num || 0; break;
                     case 'profit': aVal = a.profit_num || 0; bVal = b.profit_num || 0; break;
+                    case 'stress': aVal = (a.stress_worst_profit_num ?? -1e18); bVal = (b.stress_worst_profit_num ?? -1e18); break;
                     case 'pf': aVal = a.pf_num || 0; bVal = b.pf_num || 0; break;
                     case 'dd': aVal = a.dd_num || 0; bVal = b.dd_num || 0; break;
                     case 'sharpe': aVal = a.sharpe_num || 0; bVal = b.sharpe_num || 0; break;
@@ -498,6 +512,10 @@
                 const ddClass = (p.dd_num || 0) <= 20 ? 'positive' : (p.dd_num || 0) > 30 ? 'negative' : '';
                 const fwdClass = (p.forward_num || 0) > 0 ? 'positive' : 'negative';
                 const backClass = (p.back_num || 0) > 0 ? 'positive' : 'negative';
+                const stressNum = p.stress_worst_profit_num;
+                const stressClass = stressNum == null ? '' : (stressNum >= 0 ? 'positive' : 'negative');
+                const stressTitle = (p.stress_worst_scenario && p.stress_worst_scenario !== '-') ? p.stress_worst_scenario : '';
+                const stressText = stressNum == null ? '-' : formatMoney(stressNum);
 
                 tr.innerHTML = `
                     <td><strong>${idx + 1}</strong></td>
@@ -509,7 +527,8 @@
                     </td>
                     <td><span class="status-badge ${p.status}">${p.status_label || p.status}</span></td>
                     <td class="score-cell ${scoreClass}">${p.score}</td>
-                    <td>${p.profit}</td>
+                    <td>${formatMoney(p.profit_num || 0)}</td>
+                    <td class="${stressClass}" title="${stressTitle}">${stressText}</td>
                     <td class="${pfClass}">${p.profit_factor}</td>
                     <td class="${ddClass}">${p.max_drawdown_pct}</td>
                     <td>${p.sharpe_ratio}</td>

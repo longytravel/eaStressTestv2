@@ -43,7 +43,9 @@ def run_monte_carlo(
             - max_drawdown_median: float
             - max_drawdown_worst: float (95th percentile of drawdowns)
             - percentiles: dict of level -> profit value
+            - drawdown_percentiles: dict of level -> max drawdown (%)
             - distribution: list of final profits (for charting)
+            - drawdown_distribution: list of max drawdowns (%) (for charting)
             - passed_gates: bool
             - errors: list
     """
@@ -104,6 +106,13 @@ def run_monte_carlo(
         idx = max(0, min(idx, n - 1))
         percentiles[level] = final_profits[idx]
 
+    # Drawdown percentiles
+    drawdown_percentiles = {}
+    for level in confidence_levels:
+        idx = int(level * n)
+        idx = max(0, min(idx, n - 1))
+        drawdown_percentiles[level] = max_drawdowns[idx]
+
     # Core metrics
     ruin_probability = (ruin_count / iterations) * 100
     profitable_count = sum(1 for p in final_profits if p > 0)
@@ -137,7 +146,9 @@ def run_monte_carlo(
         'max_drawdown_median': round(dd_median, 2),
         'max_drawdown_worst': round(dd_worst, 2),
         'percentiles': {k: round(v, 2) for k, v in percentiles.items()},
+        'drawdown_percentiles': {k: round(v, 2) for k, v in drawdown_percentiles.items()},
         'distribution': final_profits,  # For histogram
+        'drawdown_distribution': max_drawdowns,  # For histogram
         'passed_gates': passed_gates,
         'gate_details': {
             'ruin_ok': ruin_probability <= settings.MC_RUIN_MAX,
@@ -231,9 +242,10 @@ def calculate_risk_metrics(
     annual_std = std_dev * (trading_days_per_year ** 0.5)
 
     # Downside deviation (for Sortino)
+    # Standard definition uses the total number of periods (n), not the count of downside periods.
     downside_returns = [r for r in returns if r < 0]
     if downside_returns:
-        downside_var = sum(r ** 2 for r in downside_returns) / len(downside_returns)
+        downside_var = sum(r ** 2 for r in downside_returns) / n
         downside_std = downside_var ** 0.5
         annual_downside_std = downside_std * (trading_days_per_year ** 0.5)
     else:

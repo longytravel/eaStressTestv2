@@ -1,0 +1,11 @@
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local run artifacts (dashboards, leaderboards, workflow JSONs, etc.)
+runs/
+archive/
+
+# Local Claude/Codex config
+.claude/settings.local.json

@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EA Stress Test - Boards</title>
+    <style>
+        :root {
+            --bg: #f8f9fa;
+            --panel: #ffffff;
+            --border: #dee2e6;
+            --text: #212529;
+            --text-muted: #6c757d;
+            --accent: #0d6efd;
+            --good: #198754;
+            --warn: #ffc107;
+            --bad: #dc3545;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .header-meta {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            color: var(--text-muted);
+            font-size: 0.875rem;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .summary-card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 14px;
+            text-align: center;
+        }
+
+        .summary-card .value {
+            font-size: 1.75rem;
+            font-weight: 700;
+        }
+
+        .summary-card .label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .toolbar {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            padding: 12px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 16px;
+            align-items: center;
+        }
+
+        .toggle-btn {
+            padding: 6px 14px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: var(--panel);
+            cursor: pointer;
+            font-size: 0.75rem;
+            transition: all 0.2s;
+        }
+
+        .toggle-btn:hover { background: var(--bg); }
+        .toggle-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+        .search-input, .select-input {
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 0.875rem;
+            background: var(--panel);
+        }
+
+        .search-input { flex: 1; min-width: 240px; }
+
+        .table-container {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8125rem;
+        }
+
+        th, td {
+            padding: 10px 12px;
+            text-align: right;
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+        }
+
+        th {
+            background: var(--bg);
+            font-weight: 600;
+            color: var(--text-muted);
+            position: sticky;
+            top: 0;
+        }
+        th.sortable { cursor: pointer; user-select: none; }
+        th.sortable:hover { background: #eef1f5; }
+        th.sorted { color: var(--text); }
+        .sort-icon { margin-left: 6px; font-size: 0.75rem; color: var(--text-muted); }
+
+        td.left, th.left { text-align: left; }
+        td.center, th.center { text-align: center; }
+
+        tbody tr:hover { background: #f8f9fa; }
+
+        .pill {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            background: rgba(108, 117, 125, 0.08);
+        }
+
+        .pill.good { border-color: var(--good); color: var(--good); background: rgba(25, 135, 84, 0.08); }
+        .pill.bad { border-color: var(--bad); color: var(--bad); background: rgba(220, 53, 69, 0.08); }
+
+        a { color: var(--accent); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        .muted { color: var(--text-muted); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div>
+                <h1>Boards</h1>
+                <div class="header-meta" id="headerMeta"></div>
+            </div>
+            <div class="header-meta">
+                <a href="../leaderboard/index.html">Leaderboard</a>
+                <span class="muted">Updated:</span>
+                <span id="updatedAt">-</span>
+            </div>
+        </header>
+
+        <div class="summary-grid" id="summaryGrid"></div>
+
+        <div class="toolbar">
+            <button class="toggle-btn active" id="viewWorkflowsBtn" onclick="setView('workflows')">Workflows</button>
+            <button class="toggle-btn" id="viewScenariosBtn" onclick="setView('scenarios')">Scenarios</button>
+
+            <input class="search-input" id="searchInput" placeholder="Search EA / workflow / scenario...">
+
+            <select class="select-input" id="eaFilter"></select>
+            <select class="select-input" id="symbolFilter"></select>
+            <select class="select-input" id="tfFilter"></select>
+
+            <select class="select-input" id="modelFilter" style="display:none;"></select>
+            <select class="select-input" id="variantFilter" style="display:none;"></select>
+            <select class="select-input" id="windowFilter" style="display:none;"></select>
+        </div>
+
+        <div class="table-container" id="workflowsTable"></div>
+        <div class="table-container" id="scenariosTable" style="display:none;"></div>
+    </div>
+
+    <script>
+        const DATA = {{DATA_JSON}};
+
+        let currentView = 'workflows';
+
+        const els = {
+            search: document.getElementById('searchInput'),
+            ea: document.getElementById('eaFilter'),
+            symbol: document.getElementById('symbolFilter'),
+            tf: document.getElementById('tfFilter'),
+            model: document.getElementById('modelFilter'),
+            variant: document.getElementById('variantFilter'),
+            window: document.getElementById('windowFilter'),
+            workflowsTable: document.getElementById('workflowsTable'),
+            scenariosTable: document.getElementById('scenariosTable'),
+            viewWorkflowsBtn: document.getElementById('viewWorkflowsBtn'),
+            viewScenariosBtn: document.getElementById('viewScenariosBtn'),
+        };
+
+        function formatMoney(value) {
+            const num = Number(value) || 0;
+            const sign = num >= 0 ? '' : '-';
+            return sign + '£' + Math.abs(num).toFixed(0);
+        }
+
+        function formatNum(value, digits = 2) {
+            const num = Number(value) || 0;
+            return num.toFixed(digits);
+        }
+
+        function uniq(values) {
+            return [...new Set(values.filter(v => v != null && v !== ''))].sort();
+        }
+
+        function setView(view) {
+            currentView = view;
+            els.viewWorkflowsBtn.classList.toggle('active', view === 'workflows');
+            els.viewScenariosBtn.classList.toggle('active', view === 'scenarios');
+            els.workflowsTable.style.display = view === 'workflows' ? 'block' : 'none';
+            els.scenariosTable.style.display = view === 'scenarios' ? 'block' : 'none';
+
+            const showScenarioFilters = view === 'scenarios';
+            els.model.style.display = showScenarioFilters ? 'inline-block' : 'none';
+            els.variant.style.display = showScenarioFilters ? 'inline-block' : 'none';
+            els.window.style.display = showScenarioFilters ? 'inline-block' : 'none';
+            render();
+        }
+
+        function populateFilters() {
+            const workflows = DATA.workflows || [];
+            const scenarios = DATA.scenarios || [];
+
+            const addOptions = (select, values, label = 'All') => {
+                select.innerHTML = '';
+                const optAll = document.createElement('option');
+                optAll.value = 'all';
+                optAll.textContent = label;
+                select.appendChild(optAll);
+                values.forEach(v => {
+                    const o = document.createElement('option');
+                    o.value = v;
+                    o.textContent = v;
+                    select.appendChild(o);
+                });
+            };
+
+            addOptions(els.ea, uniq(workflows.map(w => w.ea_name)), 'All EAs');
+            addOptions(els.symbol, uniq(workflows.map(w => w.symbol)), 'All Symbols');
+            addOptions(els.tf, uniq(workflows.map(w => w.timeframe)), 'All TFs');
+
+            addOptions(els.model, ['1', '0'], 'All Models');
+            addOptions(els.variant, uniq(scenarios.map(s => s.variant || 'base')), 'All Variants');
+            addOptions(els.window, uniq(scenarios.map(s => s.window_id || s.window_label)), 'All Windows');
+        }
+
+        function passesBaseFilters(item) {
+            const q = (els.search.value || '').trim().toLowerCase();
+            const ea = els.ea.value;
+            const sym = els.symbol.value;
+            const tf = els.tf.value;
+
+            if (ea !== 'all' && (item.ea_name || '') !== ea) return false;
+            if (sym !== 'all' && (item.symbol || '') !== sym) return false;
+            if (tf !== 'all' && (item.timeframe || '') !== tf) return false;
+
+            if (q) {
+                const hay = `${item.ea_name || ''} ${item.workflow_id || ''} ${item.symbol || ''} ${item.timeframe || ''} ${item.scenario_label || ''} ${item.scenario_id || ''} ${item.window_label || ''}`.toLowerCase();
+                if (!hay.includes(q)) return false;
+            }
+            return true;
+        }
+
+        const workflowSort = { key: 'created_at', desc: true };
+        const scenarioSort = { key: 'created_at', desc: true };
+
+        function sortRows(rows, sortState, kind) {
+            const copy = [...(rows || [])];
+            const key = sortState.key;
+            const desc = !!sortState.desc;
+
+            const value = (row) => {
+                if (!row) return null;
+                if (kind === 'scenario' && key === 'overlay_costs') {
+                    const sp = row.overlay_spread_pips;
+                    const sl = row.overlay_slippage_pips;
+                    if (sp != null || sl != null) return (Number(sp) || 0) * 1000 + (Number(sl) || 0);
+                    if (row.spread_points != null) return Number(row.spread_points) || 0;
+                    return -1;
+                }
+                return row[key];
+            };
+
+            const cmp = (a, b) => {
+                const av = value(a);
+                const bv = value(b);
+                if (av == null && bv == null) return 0;
+                if (av == null) return 1;
+                if (bv == null) return -1;
+
+                if (typeof av === 'boolean' || typeof bv === 'boolean') {
+                    const ar = av === true ? 2 : (av === false ? 1 : 0);
+                    const br = bv === true ? 2 : (bv === false ? 1 : 0);
+                    return ar - br;
+                }
+
+                if (typeof av === 'number' && typeof bv === 'number') return av - bv;
+                return String(av).localeCompare(String(bv));
+            };
+
+            copy.sort((a, b) => desc ? -cmp(a, b) : cmp(a, b));
+            return copy;
+        }
+
+        function attachSortHandlers(tableEl, sortState) {
+            if (!tableEl) return;
+            tableEl.querySelectorAll('th[data-sort]').forEach(th => {
+                th.classList.add('sortable');
+                th.onclick = () => {
+                    const key = th.dataset.sort;
+                    if (sortState.key === key) sortState.desc = !sortState.desc;
+                    else { sortState.key = key; sortState.desc = true; }
+                    render();
+                };
+            });
+
+            tableEl.querySelectorAll('th[data-sort]').forEach(th => {
+                th.classList.toggle('sorted', th.dataset.sort === sortState.key);
+                th.querySelectorAll('.sort-icon').forEach(n => n.remove());
+                if (th.dataset.sort === sortState.key) {
+                    th.insertAdjacentHTML('beforeend', `<span class="sort-icon">${sortState.desc ? '&darr;' : '&uarr;'}</span>`);
+                }
+            });
+        }
+
+        function renderWorkflows() {
+            const rows = (DATA.workflows || []).filter(passesBaseFilters);
+            const sorted = sortRows(rows, workflowSort, 'workflow');
+            const html = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th class="left" data-sort="ea_name">EA</th>
+                            <th data-sort="symbol">Symbol</th>
+                            <th data-sort="timeframe">TF</th>
+                            <th data-sort="score_num">Score</th>
+                            <th data-sort="profit_num">Profit</th>
+                            <th data-sort="pf_num">PF</th>
+                            <th data-sort="dd_num">DD%</th>
+                            <th data-sort="trades_num">Trades</th>
+                            <th class="center" data-sort="go_live_ready">Go-live</th>
+                            <th class="left" data-sort="status">Status</th>
+                            <th class="left" data-sort="created_at">Created</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${sorted.map(w => `
+                            <tr>
+                                <td class="left"><a href="${w.dashboard_link}">${w.ea_name}</a><div class="muted">${w.workflow_id}</div></td>
+                                <td>${w.symbol || '-'}</td>
+                                <td>${w.timeframe || '-'}</td>
+                                <td>${formatNum(w.score_num || 0, 1)}</td>
+                                <td>${formatMoney(w.profit_num || 0)}</td>
+                                <td>${formatNum(w.pf_num || 0, 2)}</td>
+                                <td>${formatNum(w.dd_num || 0, 1)}%</td>
+                                <td>${(w.trades_num || 0).toLocaleString()}</td>
+                                <td class="center">${w.go_live_ready === true ? '<span class="pill good">YES</span>' : (w.go_live_ready === false ? '<span class="pill bad">NO</span>' : '<span class="pill">-</span>')}</td>
+                                <td class="left">${w.status || '-'}</td>
+                                <td class="left">${w.created_at || '-'}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+            els.workflowsTable.innerHTML = html;
+            attachSortHandlers(els.workflowsTable.querySelector('table'), workflowSort);
+        }
+
+        function renderScenarios() {
+            const model = els.model.value;
+            const variant = els.variant.value;
+            const windowId = els.window.value;
+
+            const rows = (DATA.scenarios || [])
+                .filter(passesBaseFilters)
+                .filter(s => model === 'all' ? true : String(s.model ?? '') === model)
+                .filter(s => variant === 'all' ? true : String(s.variant || 'base') === variant)
+                .filter(s => {
+                    if (windowId === 'all') return true;
+                    return String(s.window_id || s.window_label || '') === windowId;
+                });
+
+            const sorted = sortRows(rows, scenarioSort, 'scenario');
+
+            const modelLabel = (m) => (m === 0 ? 'Tick' : (m === 1 ? 'OHLC (1m)' : (m ?? '-')));
+
+            const costText = (s) => {
+                const sp = s.overlay_spread_pips;
+                const sl = s.overlay_slippage_pips;
+                const sides = s.overlay_slippage_sides;
+                if (sp != null || sl != null) {
+                    const spTxt = sp != null ? `${Number(sp).toFixed(0)}p` : '-';
+                    const slTxt = sl != null ? `${Number(sl).toFixed(0)}p` : '-';
+                    const sidesTxt = sides != null ? `×${sides}` : '';
+                    return `sp ${spTxt}, sl ${slTxt}${sidesTxt}`;
+                }
+                if (s.spread_points != null) return `${s.spread_points} pts`;
+                return '-';
+            };
+
+            const tickFilesPill = (s) => {
+                if (Number(s.model) !== 0) return '<span class="pill">-</span>';
+                if (s.tick_files_ok === true) return '<span class="pill good">FILES OK</span>';
+                if (s.tick_files_ok === false) {
+                    const missing = Array.isArray(s.tick_files_missing) ? s.tick_files_missing : [];
+                    const title = missing.length ? `Missing: ${missing.join(', ')}` : 'Missing tick files';
+                    const label = missing.length ? `MISSING ${missing.length}` : 'MISSING';
+                    return `<span class="pill bad" title="${title}">${label}</span>`;
+                }
+                return '<span class="pill">-</span>';
+            };
+
+            const html = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th class="left" data-sort="workflow_id">Workflow</th>
+                            <th class="left" data-sort="scenario_label">Scenario</th>
+                            <th class="left" data-sort="window_id">Window</th>
+                            <th data-sort="model">Model</th>
+                            <th data-sort="variant">Variant</th>
+                            <th class="left" data-sort="overlay_costs">Costs</th>
+                            <th data-sort="profit_num">Profit</th>
+                            <th data-sort="pf_num">PF</th>
+                            <th data-sort="dd_num">DD%</th>
+                            <th data-sort="trades_num">Trades</th>
+                            <th data-sort="hq_num">HQ%</th>
+                            <th class="center" data-sort="tick_files_ok">Tick Files</th>
+                            <th class="center" data-sort="success">OK</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${sorted.map(s => `
+                            <tr style="${s.success ? '' : 'opacity:0.6;'}">
+                                <td class="left"><a href="${s.dashboard_link}">${s.ea_name}</a><div class="muted">${s.symbol || ''} ${s.timeframe || ''}</div></td>
+                                <td class="left">${s.scenario_label || s.scenario_id || '-'}</td>
+                                <td class="left">${s.window_label || s.window_id || ''}<div class="muted">${(s.from_date && s.to_date) ? `${s.from_date} → ${s.to_date}` : ''}</div></td>
+                                <td>${modelLabel(s.model)}</td>
+                                <td>${s.variant || 'base'}</td>
+                                <td class="left">${costText(s)}</td>
+                                <td>${formatMoney(s.profit_num || 0)}</td>
+                                <td>${formatNum(s.pf_num || 0, 2)}</td>
+                                <td>${formatNum(s.dd_num || 0, 1)}%</td>
+                                <td>${(s.trades_num || 0).toLocaleString()}</td>
+                                <td>${formatNum(s.hq_num || 0, 1)}%</td>
+                                <td class="center">${tickFilesPill(s)}</td>
+                                <td class="center">${s.success ? '<span class="pill good">✓</span>' : '<span class="pill bad">✕</span>'}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+            els.scenariosTable.innerHTML = html;
+            attachSortHandlers(els.scenariosTable.querySelector('table'), scenarioSort);
+        }
+
+        function render() {
+            renderWorkflows();
+            renderScenarios();
+        }
+
+        function init() {
+            document.getElementById('updatedAt').textContent = DATA.updated_at || '-';
+            document.getElementById('headerMeta').textContent =
+                `${DATA.counts?.workflows || 0} workflows | ${DATA.counts?.scenarios || 0} scenarios`;
+
+            document.getElementById('summaryGrid').innerHTML = `
+                <div class="summary-card"><div class="value">${(DATA.counts?.workflows || 0).toLocaleString()}</div><div class="label">Workflows</div></div>
+                <div class="summary-card"><div class="value">${(DATA.counts?.scenarios || 0).toLocaleString()}</div><div class="label">Scenarios</div></div>
+                <div class="summary-card"><div class="value">${(DATA.counts?.unique_eas || 0).toLocaleString()}</div><div class="label">Unique EAs</div></div>
+                <div class="summary-card"><div class="value">${(DATA.counts?.unique_symbols || 0).toLocaleString()}</div><div class="label">Unique Symbols</div></div>
+            `;
+
+            populateFilters();
+
+            [els.search, els.ea, els.symbol, els.tf, els.model, els.variant, els.window].forEach(el => {
+                el.addEventListener('input', render);
+                el.addEventListener('change', render);
+            });
+
+            render();
+        }
+
+        init();
+        // Final override: ensure currency symbol renders correctly even if a prior
+        // generator/template wrote a corrupted glyph.
+        function formatMoney(value) {
+            const num = Number(value) || 0;
+            const sign = num >= 0 ? '' : '-';
+            const pound = String.fromCharCode(163);
+            return sign + pound + Math.abs(num).toFixed(0);
+        }
+    </script>
+</body>
+</html>

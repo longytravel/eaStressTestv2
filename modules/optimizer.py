@@ -8,7 +8,7 @@ import subprocess
 import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Callable
 from datetime import datetime
 import sys
 
@@ -17,11 +17,59 @@ from engine.terminals import TerminalRegistry
 import settings
 
 
+def _terminate_terminal_processes(terminal_exe: Path) -> None:
+    """Best-effort cleanup of stuck terminal/metatester processes for this terminal install."""
+    try:
+        import psutil
+    except Exception:
+        return
+
+    try:
+        terminal_exe_resolved = str(terminal_exe.resolve()).lower()
+    except Exception:
+        terminal_exe_resolved = str(terminal_exe).lower()
+
+    exe_paths = {terminal_exe_resolved}
+    metatester_exe = terminal_exe.parent / 'metatester64.exe'
+    if metatester_exe.exists():
+        try:
+            exe_paths.add(str(metatester_exe.resolve()).lower())
+        except Exception:
+            exe_paths.add(str(metatester_exe).lower())
+
+    to_kill = []
+    for proc in psutil.process_iter(['pid', 'exe']):
+        try:
+            exe = proc.info.get('exe')
+            if not exe:
+                continue
+            exe_norm = str(Path(exe).resolve()).lower()
+            if exe_norm in exe_paths:
+                to_kill.append(proc)
+        except (psutil.NoSuchProcess, psutil.AccessDenied, FileNotFoundError):
+            continue
+        except Exception:
+            continue
+
+    for proc in to_kill:
+        try:
+            proc.kill()
+        except Exception:
+            continue
+
+    for proc in to_kill:
+        try:
+            proc.wait(timeout=5)
+        except Exception:
+            continue
+
+
 def create_ini_file(
     ea_name: str,
     symbol: str,
     timeframe: str,
     param_ranges: list[dict],
+    report_name: Optional[str] = None,
     output_path: Optional[str] = None,
     terminal: Optional[dict] = None,
     optimization_mode: int = 2,  # 2 = Genetic algorithm
@@ -54,9 +102,9 @@ def create_ini_file(
     }
     tf_value = tf_map.get(timeframe.upper(), 60)
 
-    # Generate report name from EA name
+    # Report name (overrideable for deterministic multi-run workflows)
     ea_base = Path(ea_name).stem
-    report_name = f'{ea_base}_OPT'
+    report_name = report_name or f'{ea_base}_OPT'
 
     ini_lines = [
         '; EA Stress Test - Optimization Configuration',
@@ -119,9 +167,12 @@ def run_optimization(
     symbol: str,
     timeframe: str,
     param_ranges: list[dict],
+    report_name: Optional[str] = None,
     terminal: Optional[dict] = None,
     registry: Optional[TerminalRegistry] = None,
     timeout: int = 7200,  # 2 hours default
+    on_progress: Optional[Callable[[str], None]] = None,
+    progress_interval_s: int = 30,
 ) -> dict:
     """
     Run parameter optimization.
@@ -160,14 +211,17 @@ def run_optimization(
         symbol=symbol,
         timeframe=timeframe,
         param_ranges=param_ranges,
+        report_name=report_name,
         terminal=terminal,
     )
 
     # Run terminal
     terminal_exe = Path(terminal['path'])
+    _terminate_terminal_processes(terminal_exe)
     cmd = [str(terminal_exe), f'/config:{ini_path}']
 
     start_time = time.time()
+    last_progress = start_time
 
     try:
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -176,35 +230,83 @@ def run_optimization(
             if time.time() - start_time > timeout:
                 process.kill()
                 return {'success': False, 'errors': [f'Optimization timed out after {timeout}s']}
+            if on_progress and (time.time() - last_progress) >= float(progress_interval_s or 30):
+                try:
+                    elapsed = time.time() - start_time
+                    on_progress(
+                        f"Optimization running: {report_name or ea_path.stem} {symbol} {timeframe} "
+                        f"({elapsed:.0f}s elapsed)"
+                    )
+                except Exception:
+                    pass
+                last_progress = time.time()
             time.sleep(5)
 
     except Exception as e:
         return {'success': False, 'errors': [f'Failed to run optimization: {str(e)}']}
 
-    # Find results - check both terminal root and Tester folder
+    # Find results - check terminal root and Tester folders.
+    # MT5 creates multiple reports when ForwardMode is enabled:
+    #   - <Report>.xml (main/back segment)
+    #   - <Report>.forward.xml (forward segment)
+    # We prefer the main report for primary metrics, then merge forward/back results
+    # so downstream analysis can reason about both segments.
     data_path = Path(terminal['data_path'])
 
-    # MT5 generates optimization reports in terminal root or Tester folder
+    # MT5 generates optimization reports in terminal root or Tester folder.
+    # Prefer our expected report name over "most recent XML" to avoid accidentally
+    # selecting the *.forward.xml file as the primary report.
     xml_path = None
+    forward_xml_path = None
     html_path = None
 
-    # Check for XML results
-    for search_dir in [data_path, data_path / 'Tester', data_path / 'Tester' / 'reports']:
-        if search_dir.exists():
-            for f in sorted(search_dir.glob('*.xml'), key=lambda x: x.stat().st_mtime, reverse=True):
-                if f.stat().st_mtime > start_time:
-                    xml_path = f
-                    break
-        if xml_path:
-            break
+    report_base = str(report_name).strip() if report_name else f"{ea_path.stem}_OPT"
+    search_dirs = [data_path, data_path / 'Tester', data_path / 'Tester' / 'reports']
 
-    # Also check for optimization HTML report (fallback)
-    for search_dir in [data_path, data_path / 'Tester', data_path / 'Tester' / 'reports']:
-        if search_dir.exists():
-            for f in sorted(search_dir.glob('*_OPT*.htm*'), key=lambda x: x.stat().st_mtime, reverse=True):
-                if f.stat().st_mtime > start_time:
-                    html_path = f
-                    break
+    def _latest(paths: list[Path]) -> Optional[Path]:
+        if not paths:
+            return None
+        return max(paths, key=lambda x: x.stat().st_mtime)
+
+    main_candidates: list[Path] = []
+    forward_candidates: list[Path] = []
+
+    for search_dir in search_dirs:
+        if not search_dir.exists():
+            continue
+        main_candidates.extend(search_dir.glob(f"{report_base}.xml"))
+        forward_candidates.extend(search_dir.glob(f"{report_base}.forward.xml"))
+
+    # Only consider newly-written reports from this run (timestamp skew tolerance)
+    mtime_threshold = float(start_time) - 2.0
+    main_candidates = [p for p in main_candidates if p.stat().st_mtime >= mtime_threshold]
+    forward_candidates = [p for p in forward_candidates if p.stat().st_mtime >= mtime_threshold]
+
+    xml_path = _latest(main_candidates)
+    forward_xml_path = _latest(forward_candidates)
+
+    # Fallback only when report_name is not specified (avoid picking the wrong EA/run)
+    if not xml_path and not report_name:
+        xml_candidates: list[Path] = []
+        for search_dir in search_dirs:
+            if not search_dir.exists():
+                continue
+            for f in sorted(search_dir.glob('*.xml'), key=lambda x: x.stat().st_mtime, reverse=True):
+                if f.stat().st_mtime < mtime_threshold:
+                    continue
+                if f.name.endswith('.forward.xml'):
+                    continue
+                xml_candidates.append(f)
+        xml_path = _latest(xml_candidates)
+
+    # Also check for optimization HTML report (deterministic when possible)
+    for search_dir in search_dirs:
+        if not search_dir.exists():
+            continue
+        for f in sorted(search_dir.glob(f"{report_base}.htm*"), key=lambda x: x.stat().st_mtime, reverse=True):
+            if f.stat().st_mtime >= mtime_threshold:
+                html_path = f
+                break
         if html_path:
             break
 
@@ -217,6 +319,9 @@ def run_optimization(
                 cache_path = f
                 break
 
+    if report_name and not xml_path and not cache_path:
+        return {'success': False, 'errors': [f'Optimization results not found for report_name: {report_base}']}
+
     if not xml_path and not cache_path:
         return {'success': False, 'errors': ['Optimization results not found']}
 
@@ -224,6 +329,12 @@ def run_optimization(
     if xml_path:
         results = parse_optimization_results(str(xml_path))
         results['xml_path'] = str(xml_path)
+
+        # Merge forward segment info when available
+        if forward_xml_path and forward_xml_path.exists():
+            forward = parse_optimization_results(str(forward_xml_path))
+            results['forward_xml_path'] = str(forward_xml_path)
+            _merge_forward_results(results.get('results', []), forward.get('results', []))
     else:
         # Cache file exists, get basic info from filename
         # Format: EA.Symbol.Timeframe.FromDate.ToDate.Mode.Hash.opt
@@ -240,6 +351,61 @@ def run_optimization(
     results['html_path'] = str(html_path) if html_path else None
 
     return results
+
+
+def _merge_forward_results(base_results: list[dict], forward_results: list[dict]) -> None:
+    """
+    Merge MT5 forward report data into the main optimization results.
+
+    The main report (<name>_OPT.xml) contains the back/in-sample segment.
+    The forward report (<name>_OPT.forward.xml) contains the forward segment plus
+    'Forward Result'/'Back Result' columns (optimization criterion values).
+    """
+    forward_by_pass: dict[int, dict] = {}
+
+    for p in forward_results:
+        params = p.get('params') or {}
+        pass_num = params.get('Pass')
+        if isinstance(pass_num, int):
+            forward_by_pass[pass_num] = p
+
+    for p in base_results:
+        params = p.get('params') or {}
+        pass_num = params.get('Pass')
+        if not isinstance(pass_num, int):
+            continue
+
+        # Ensure 'Back Result' exists even if the forward report isn't found
+        if 'Back Result' not in params:
+            params['Back Result'] = p.get('result', 0)
+
+        fwd = forward_by_pass.get(pass_num)
+        if not fwd:
+            continue
+
+        fwd_params = fwd.get('params') or {}
+
+        # Attach criterion breakdown into params for downstream analyzers
+        if 'Forward Result' in fwd_params:
+            params['Forward Result'] = fwd_params['Forward Result']
+        if 'Back Result' in fwd_params:
+            params['Back Result'] = fwd_params['Back Result']
+
+        # Attach forward-segment metrics (use distinct keys to avoid ambiguity)
+        p['forward_profit'] = fwd.get('profit', 0)
+        p['forward_expected_payoff'] = fwd.get('expected_payoff', 0)
+        p['forward_profit_factor'] = fwd.get('profit_factor', 0)
+        p['forward_recovery_factor'] = fwd.get('recovery_factor', 0)
+        p['forward_sharpe_ratio'] = fwd.get('sharpe_ratio', 0)
+        p['forward_max_drawdown_pct'] = fwd.get('max_drawdown_pct', 0)
+        p['forward_total_trades'] = fwd.get('total_trades', 0)
+
+        # Trade counts are additive across segments; expose combined for convenience.
+        try:
+            p['total_trades'] = int(p.get('total_trades', 0) or 0) + int(fwd.get('total_trades', 0) or 0)
+        except Exception:
+            # Keep original if any weirdness in types
+            pass
 
 
 def parse_optimization_results(xml_path: str) -> dict:

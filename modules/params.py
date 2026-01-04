@@ -103,6 +103,10 @@ def extract_params(ea_path: str) -> list[dict]:
             # sinput = static input, not optimizable
             optimizable = (input_type == 'input') and (base_type in ['int', 'double'])
 
+            # Injected safety params must never be optimized
+            if name.startswith('EAStressSafety_'):
+                optimizable = False
+
             params.append({
                 'name': name,
                 'type': mql_type,

@@ -27,6 +27,7 @@ _trade_extractor = load_module("trade_extractor", _modules_dir / "trade_extracto
 extract_trades = _trade_extractor.extract_trades
 compute_equity_curve = _trade_extractor.compute_equity_curve
 split_trades_by_date = _trade_extractor.split_trades_by_date
+generate_chart_data = _trade_extractor.generate_chart_data
 Trade = _trade_extractor.Trade
 
 _monte_carlo = load_module("monte_carlo", _modules_dir / "monte_carlo.py")
@@ -43,7 +44,7 @@ import settings
 
 @dataclass
 class PassBacktestResult:
-    """Result of backtesting a single optimization pass."""
+    """Result of backtesting a single optimization pass with extended metrics."""
     success: bool
     pass_number: int
     parameters: Dict[str, Any]
@@ -54,7 +55,7 @@ class PassBacktestResult:
     opt_in_pf: float = 0.0
     opt_fwd_pf: float = 0.0
 
-    # From backtest re-run
+    # From backtest re-run - Core metrics
     report_path: Optional[str] = None
     total_trades: int = 0
     net_profit: float = 0.0
@@ -63,6 +64,39 @@ class PassBacktestResult:
     sharpe_ratio: float = 0.0
     recovery_factor: float = 0.0
     win_rate: float = 0.0
+    expected_payoff: float = 0.0
+    gross_profit: float = 0.0
+    gross_loss: float = 0.0
+
+    # Extended: Statistical
+    z_score: float = 0.0
+    z_score_confidence: float = 0.0
+
+    # Extended: Returns
+    ahpr: float = 0.0
+    ghpr: float = 0.0
+
+    # Extended: Linear Regression
+    lr_correlation: float = 0.0
+    lr_standard_error: float = 0.0
+
+    # Extended: Drawdown details
+    drawdown: Dict[str, float] = None
+
+    # Extended: Streaks
+    streaks: Dict[str, Any] = None
+
+    # Extended: Trade sizes/positions
+    positions: Dict[str, Any] = None
+
+    # Extended: Holding times
+    holding_times: Dict[str, str] = None
+
+    # Extended: Costs
+    costs: Dict[str, float] = None
+
+    # Extended: Direction
+    direction: Dict[str, Any] = None
 
     # Split metrics
     in_sample_profit: float = 0.0
@@ -73,6 +107,9 @@ class PassBacktestResult:
     # Equity curves (trade-by-trade)
     equity_in_sample: List[float] = None
     equity_forward: List[float] = None
+
+    # Chart data
+    charts: Dict[str, Any] = None
 
     # Monte Carlo results
     mc_confidence: float = 0.0
@@ -88,6 +125,20 @@ class PassBacktestResult:
             self.equity_in_sample = []
         if self.equity_forward is None:
             self.equity_forward = []
+        if self.drawdown is None:
+            self.drawdown = {}
+        if self.streaks is None:
+            self.streaks = {}
+        if self.positions is None:
+            self.positions = {}
+        if self.holding_times is None:
+            self.holding_times = {}
+        if self.costs is None:
+            self.costs = {}
+        if self.direction is None:
+            self.direction = {}
+        if self.charts is None:
+            self.charts = {}
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -95,7 +146,7 @@ class PassBacktestResult:
 
 def backtest_top_passes(
     workflow_state: dict,
-    top_n: int = 20,
+    top_n: int = None,
     timeout_per_pass: int = 300,
     terminal: Optional[dict] = None,
 ) -> Dict[int, PassBacktestResult]:
@@ -111,6 +162,10 @@ def backtest_top_passes(
     Returns:
         Dict mapping pass_number -> PassBacktestResult
     """
+    # Use default from settings if not specified
+    if top_n is None:
+        top_n = settings.TOP_PASSES_BACKTEST
+
     # Get terminal
     if terminal is None:
         registry = TerminalRegistry()
@@ -220,6 +275,9 @@ def backtest_top_passes(
             initial_balance=initial_balance,
         )
 
+        # Generate chart data for this pass
+        chart_data = generate_chart_data(trades)
+
         results[pass_number] = PassBacktestResult(
             success=True,
             pass_number=pass_number,
@@ -227,6 +285,7 @@ def backtest_top_passes(
             opt_in_profit=opt_in_profit,
             opt_fwd_profit=opt_fwd_profit,
             report_path=report_path,
+            # Core metrics
             total_trades=len(trades),
             net_profit=trades_result.total_net_profit,
             profit_factor=bt_result.get('profit_factor', 0),
@@ -234,12 +293,41 @@ def backtest_top_passes(
             sharpe_ratio=bt_result.get('sharpe_ratio', 0),
             recovery_factor=bt_result.get('recovery_factor', 0),
             win_rate=bt_result.get('win_rate', 0),
+            expected_payoff=bt_result.get('expected_payoff', 0),
+            gross_profit=bt_result.get('gross_profit', 0),
+            gross_loss=bt_result.get('gross_loss', 0),
+            # Extended: Statistical
+            z_score=bt_result.get('z_score', 0),
+            z_score_confidence=bt_result.get('z_score_confidence', 0),
+            # Extended: Returns
+            ahpr=bt_result.get('ahpr', 0),
+            ghpr=bt_result.get('ghpr', 0),
+            # Extended: Linear Regression
+            lr_correlation=bt_result.get('lr_correlation', 0),
+            lr_standard_error=bt_result.get('lr_standard_error', 0),
+            # Extended: Drawdown details
+            drawdown=bt_result.get('drawdown', {}),
+            # Extended: Streaks
+            streaks=bt_result.get('streaks', {}),
+            # Extended: Positions
+            positions=bt_result.get('positions', {}),
+            # Extended: Holding times
+            holding_times=bt_result.get('holding_times', {}),
+            # Extended: Costs
+            costs=bt_result.get('costs', {}),
+            # Extended: Direction
+            direction=bt_result.get('direction', {}),
+            # Split metrics
             in_sample_profit=in_sample_profit,
             in_sample_trades=len(in_sample_trades),
             forward_profit=forward_profit,
             forward_trades=len(forward_trades),
+            # Equity curves
             equity_in_sample=equity_in_sample,
             equity_forward=equity_forward,
+            # Chart data
+            charts=chart_data,
+            # Monte Carlo
             mc_confidence=mc_result.get('confidence', 0),
             mc_ruin_probability=mc_result.get('ruin_probability', 0),
             mc_median_profit=mc_result.get('median_profit', 0),
@@ -322,15 +410,38 @@ def prepare_dashboard_data(
                 'sharpe_ratio': p.get('sharpe_ratio', 0),
                 'recovery_factor': p.get('recovery_factor', 0),
                 'win_rate': 0,
+                'expected_payoff': 0,
+                'gross_profit': 0,
+                'gross_loss': 0,
                 'split': {
                     'in_sample': {'net_profit': 0, 'trades': 0},
                     'forward': {'net_profit': 0, 'trades': 0}
                 }
             },
+            # Extended: Advanced Statistics (empty for non-backtested)
+            'advanced': {
+                'z_score': 0,
+                'z_score_confidence': 0,
+                'ahpr': 0,
+                'ghpr': 0,
+                'lr_correlation': 0,
+                'lr_standard_error': 0,
+            },
+            # Extended metrics (empty for non-backtested)
+            'drawdown': {},
+            'streaks': {},
+            'positions': {},
+            'holding_times': {},
+            'costs': {},
+            'direction': {},
+            # Equity curves
             'equity': {
                 'in_sample': [],
                 'forward': []
             },
+            # Chart data (empty for non-backtested)
+            'charts': {},
+            # Monte Carlo
             'monte_carlo': {
                 'confidence': 0,
                 'ruin_probability': 0,
@@ -341,7 +452,7 @@ def prepare_dashboard_data(
             'error': None,
         }
 
-    # Then overlay backtested passes with full details (equity curves, monte carlo)
+    # Then overlay backtested passes with full details (equity curves, monte carlo, extended metrics)
     for pass_num, result in pass_results.items():
         passes_data[str(pass_num)] = {
             'success': result.success,
@@ -360,6 +471,9 @@ def prepare_dashboard_data(
                 'sharpe_ratio': result.sharpe_ratio,
                 'recovery_factor': result.recovery_factor,
                 'win_rate': result.win_rate,
+                'expected_payoff': result.expected_payoff,
+                'gross_profit': result.gross_profit,
+                'gross_loss': result.gross_loss,
                 'split': {
                     'in_sample': {
                         'net_profit': result.in_sample_profit,
@@ -371,10 +485,35 @@ def prepare_dashboard_data(
                     }
                 }
             },
+            # Extended: Advanced Statistics
+            'advanced': {
+                'z_score': result.z_score,
+                'z_score_confidence': result.z_score_confidence,
+                'ahpr': result.ahpr,
+                'ghpr': result.ghpr,
+                'lr_correlation': result.lr_correlation,
+                'lr_standard_error': result.lr_standard_error,
+            },
+            # Extended: Drawdown details
+            'drawdown': result.drawdown,
+            # Extended: Streaks
+            'streaks': result.streaks,
+            # Extended: Position analysis
+            'positions': result.positions,
+            # Extended: Holding times
+            'holding_times': result.holding_times,
+            # Extended: Costs
+            'costs': result.costs,
+            # Extended: Direction
+            'direction': result.direction,
+            # Equity curves
             'equity': {
                 'in_sample': result.equity_in_sample,
                 'forward': result.equity_forward,
             },
+            # Chart data for profit histogram, MFE/MAE, holding times
+            'charts': result.charts,
+            # Monte Carlo
             'monte_carlo': {
                 'confidence': result.mc_confidence,
                 'ruin_probability': result.mc_ruin_probability,

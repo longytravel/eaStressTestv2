@@ -24,10 +24,13 @@ Read the EA source file (.mq5)
 
 ### Step 2: Identify Improvement Areas
 
-Prioritize fixes by impact:
+**FIRST: Scan for hardcoded parameters that could be optimized (see section below)**
+
+Then prioritize fixes by impact:
 
 | Issue Type | Priority | Typical Fix |
 |------------|----------|-------------|
+| Hardcoded Values | CRITICAL | Expose as input params |
 | Low Profit Factor | HIGH | Improve entries, exits, or R:R |
 | High Drawdown | HIGH | Add position sizing, stops |
 | Few Trades | MEDIUM | Widen entry conditions |
@@ -102,6 +105,40 @@ if(PositionSelect(_Symbol))
 }
 ```
 
+## CRITICAL: Hardcoded Parameter Detection (ALWAYS DO THIS FIRST)
+
+**Before analyzing performance issues, scan the EA code for hardcoded numeric values
+that could be exposed as optimizable input parameters.**
+
+### Why This Matters
+
+Hardcoded values prevent optimization from finding optimal settings. The optimizer
+can only tune what's exposed as an input parameter. A value that seems reasonable
+to a developer may not be optimal - only optimization can find the best value.
+
+### Principle
+
+Any numeric value that affects trading decisions (entries, exits, filters, sizing)
+is a candidate for parameterization. Look for magic numbers in:
+
+- Entry/exit logic (thresholds, multipliers, ratios)
+- Filter conditions (limits, minimums, maximums)
+- Position management (distances, percentages, counts)
+- Time-based logic (hours, bar counts, durations)
+
+### How to Present Findings
+
+When you find a hardcoded value that should be a parameter:
+
+1. **Identify** the location and current hardcoded value
+2. **Explain** why it limits optimization potential
+3. **Suggest** exposing it as an input parameter
+4. **Recommend** a reasonable optimization range based on the value's purpose
+
+Keep suggestions brief - the user will decide naming conventions and exact ranges.
+
+---
+
 ## Common Improvement Patterns
 
 ### Low Profit Factor
@@ -161,6 +198,34 @@ Example lookups:
 3. **One change at a time** - Let user test incrementally
 4. **Explain tradeoffs** - Every fix has downsides
 5. **Verify with /mql5-lookup** - No syntax guessing
+
+## IMPORTANT: Saving Improved EAs
+
+**ALWAYS save improved EAs with a new name** to preserve the original and track versions:
+
+1. **Naming Convention**: `{OriginalName}_Improved`
+   - Example: `RSI_Divergence_Pro` → `RSI_Divergence_Pro_Improved`
+
+2. **Before applying changes**:
+   - Copy the original EA to the new filename
+   - Apply changes to the new file only
+   - Original EA remains untouched for comparison
+
+3. **Workflow**:
+   ```python
+   # Copy EA to new name before modifying
+   import shutil
+   original = "path/to/MyEA.mq5"
+   improved = "path/to/MyEA_Improved.mq5"
+   shutil.copy(original, improved)
+   # Now apply edits to improved version only
+   ```
+
+4. **Benefits**:
+   - Original preserved for A/B comparison
+   - Dashboard shows both versions separately
+   - Leaderboard can compare original vs improved
+   - Easy rollback if improvements don't help
 
 ## Example Session
 
