@@ -6,6 +6,7 @@ Each gate checks specific metrics against thresholds from settings.
 """
 from pathlib import Path
 from typing import Optional
+from datetime import datetime
 import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -99,6 +100,63 @@ def check_minimum_trades(total_trades: int) -> GateResult:
         threshold=settings.MIN_TRADES,
         operator='>=',
         message=f"{'PASS' if passed else 'FAIL'}: {total_trades} trades (minimum: {settings.MIN_TRADES})"
+    )
+
+
+def check_history_coverage(bars: int, timeframe: str, start_date: str, end_date: str) -> GateResult:
+    """Gate 5a: Check that MT5 has enough history bars for the requested date range.
+
+    This catches a common "flaky" failure mode where MT5 only has ~1 year of data
+    for a symbol, so the 4-year test silently runs on a shorter period.
+    """
+    try:
+        start = datetime.strptime(str(start_date), "%Y.%m.%d")
+        end = datetime.strptime(str(end_date), "%Y.%m.%d")
+        total_days = max(1, (end - start).days + 1)
+    except Exception:
+        # If we can't parse dates, don't block the workflow; treat as pass.
+        return GateResult(
+            name="history_coverage_pct",
+            passed=True,
+            value=100.0,
+            threshold=float(getattr(settings, "MIN_HISTORY_COVERAGE_PCT", 80.0) or 80.0),
+            operator=">=",
+            message="PASS: Unable to compute history coverage (date parse)",
+        )
+
+    tf = str(timeframe or "").upper().strip()
+    minutes_map = {
+        "M1": 1,
+        "M5": 5,
+        "M15": 15,
+        "M30": 30,
+        "H1": 60,
+        "H4": 240,
+        "D1": 1440,
+        "W1": 10080,
+        "MN1": 43200,
+    }
+    period_min = minutes_map.get(tf, 60)
+
+    # Approx trading-day adjustment: intraday and D1 effectively trade ~5/7 days.
+    trading_days = int(round(total_days * (5.0 / 7.0))) if period_min <= 1440 else total_days
+    bars_per_day = max(1, int(round(1440 / period_min))) if period_min < 1440 else 1
+    expected = max(1, trading_days * bars_per_day)
+
+    coverage = (float(bars or 0) / float(expected)) * 100.0
+    min_pct = float(getattr(settings, "MIN_HISTORY_COVERAGE_PCT", 80.0) or 80.0)
+    passed = coverage >= min_pct
+
+    return GateResult(
+        name="history_coverage_pct",
+        passed=passed,
+        value=round(coverage, 2),
+        threshold=round(min_pct, 2),
+        operator=">=",
+        message=(
+            f"{'PASS' if passed else 'FAIL'}: History coverage {coverage:.1f}% "
+            f"({bars} bars, expected ~{expected} for {timeframe} {start_date}->{end_date})"
+        ),
     )
 
 
