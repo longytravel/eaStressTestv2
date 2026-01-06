@@ -1,5 +1,5 @@
 """
-Boards Generator
+Boards Generator (Workflow Summary)
 
 Creates a global index across workflows and post-step scenarios so results don't
 "disappear" from the UI when you switch runs.
@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from engine.gates import calculate_composite_score
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
@@ -103,20 +105,26 @@ def _generate_notes(state: dict[str, Any]) -> str:
 
 
 def _best_workflow_metrics(state: dict[str, Any]) -> dict[str, Any]:
+    """Get metrics from the best pass for Go Live Score calculation.
+
+    Returns dict with: profit, profit_factor, max_drawdown_pct, total_trades,
+    win_rate, forward_result, back_result
+    """
     # Priority 1: Best optimization pass (most accurate after optimization completes)
     opt_results = _as_dict(state.get("optimization_results"))
     top_20 = _as_list(opt_results.get("top_20"))
     if top_20 and isinstance(top_20[0], dict):
         best = top_20[0]
         if best.get("profit") or best.get("total_trades"):
+            params = _as_dict(best.get("params"))
             return {
                 "profit": best.get("profit", 0),
                 "profit_factor": best.get("profit_factor", 0),
                 "max_drawdown_pct": best.get("max_drawdown_pct", 0),
                 "total_trades": best.get("total_trades", 0),
-                "sharpe_ratio": best.get("sharpe_ratio", 0),
-                "recovery_factor": best.get("recovery_factor", 0),
-                "expected_payoff": best.get("expected_payoff", 0),
+                "win_rate": best.get("win_rate", 0),
+                "forward_result": best.get("forward_result") or params.get("Forward Result", 0),
+                "back_result": best.get("back_result") or params.get("Back Result", 0),
             }
 
     # Priority 2: Backtest results (if backtests were run on selected passes)
@@ -130,7 +138,9 @@ def _best_workflow_metrics(state: dict[str, Any]) -> dict[str, Any]:
                 "profit_factor": best_bt.get("profit_factor", 0),
                 "max_drawdown_pct": best_bt.get("max_drawdown_pct", 0),
                 "total_trades": best_bt.get("total_trades", 0),
-                "sharpe_ratio": best_bt.get("sharpe_ratio", 0),
+                "win_rate": best_bt.get("win_rate", 0),
+                "forward_result": best_bt.get("forward_result", 0),
+                "back_result": best_bt.get("back_result", 0),
             }
 
     # Priority 3: Explicit metrics field (may be from validation)
@@ -149,7 +159,9 @@ def _best_workflow_metrics(state: dict[str, Any]) -> dict[str, Any]:
             "profit_factor": step5.get("profit_factor", 0),
             "max_drawdown_pct": step5.get("max_drawdown_pct", 0),
             "total_trades": step5.get("total_trades", 0),
-            "sharpe_ratio": step5.get("sharpe_ratio", 0),
+            "win_rate": step5.get("win_rate", 0),
+            "forward_result": 0,
+            "back_result": 0,
         }
 
     return {}
@@ -186,12 +198,19 @@ def generate_boards(
         # Skip failed/stuck workflows
         if status in EXCLUDED_STATUSES:
             continue
-        score = state.get("composite_score", 0) or 0
-        go_live = _as_dict(state.get("go_live"))
-        go_live_ready = go_live.get("go_live_ready") if go_live else None
 
         metrics = _best_workflow_metrics(state)
         notes = _generate_notes(state)
+
+        # Calculate Go Live Score from metrics
+        go_live_score = calculate_composite_score(metrics)
+
+        go_live = _as_dict(state.get("go_live"))
+        go_live_ready = go_live.get("go_live_ready") if go_live else None
+
+        forward_result = float(metrics.get("forward_result") or 0)
+        back_result = float(metrics.get("back_result") or 0)
+
         workflows.append(
             {
                 "workflow_id": workflow_id,
@@ -202,12 +221,14 @@ def generate_boards(
                 "created_at_fmt": _format_date(created_at),
                 "status": status,
                 "notes": notes,
-                "score_num": float(score or 0),
+                "score_num": go_live_score,
                 "profit_num": float(metrics.get("profit") or 0),
                 "pf_num": float(metrics.get("profit_factor") or 0),
                 "dd_num": float(metrics.get("max_drawdown_pct") or 0),
                 "trades_num": int(metrics.get("total_trades") or 0),
-                "sharpe_num": float(metrics.get("sharpe_ratio") or 0),
+                "win_rate_num": float(metrics.get("win_rate") or 0),
+                "forward_num": forward_result,
+                "back_num": back_result,
                 "go_live_ready": go_live_ready,
                 "dashboard_link": f"../dashboards/{workflow_id}/index.html",
             }

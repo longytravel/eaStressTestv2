@@ -129,38 +129,43 @@ def _status_from(forward: float, back: float, is_consistent: bool) -> tuple[str,
 
 
 def _score_for_backtest(pass_result: dict[str, Any]) -> float:
-    stored = pass_result.get("composite_score")
-    if isinstance(stored, (int, float)):
-        return float(stored)
+    """Calculate Go Live Score for a pass.
 
+    Uses the new Go Live Score formula which considers:
+    - Consistency (back+forward both positive)
+    - Total profit
+    - Trade count
+    - Profit factor
+    - Max drawdown
+    """
+    # Extract all metrics needed for Go Live Score
+    profit = float(pass_result.get("profit") or 0)
+    trades = int(pass_result.get("total_trades") or 0)
     pf = float(pass_result.get("profit_factor") or 0)
     dd = float(pass_result.get("max_drawdown_pct") or 0)
-    sharpe = float(pass_result.get("sharpe_ratio") or 0)
-    sortino = float(pass_result.get("sortino_ratio") or 0)
-    calmar = float(pass_result.get("calmar_ratio") or 0)
-    recovery = float(pass_result.get("recovery_factor") or 0)
-    expected_payoff = float(pass_result.get("expected_payoff") or 0)
-    win_rate = float(pass_result.get("win_rate") or 0)
-    is_consistent = bool(pass_result.get("is_consistent"))
 
-    score = float(
+    # Forward/back results for consistency scoring
+    forward = float(pass_result.get("forward_result") or 0)
+    back = float(pass_result.get("back_result") or 0)
+
+    # If forward/back not directly available, check params
+    if forward == 0 and back == 0:
+        params = pass_result.get("params") if isinstance(pass_result.get("params"), dict) else {}
+        forward = float(params.get("Forward Result") or 0)
+        back = float(params.get("Back Result") or 0)
+
+    return float(
         calculate_composite_score(
             {
+                "profit": profit,
+                "total_trades": trades,
                 "profit_factor": pf,
-                "max_drawdown": dd,
-                "sharpe_ratio": sharpe,
-                "sortino_ratio": sortino,
-                "calmar_ratio": calmar,
-                "recovery_factor": recovery,
-                "expected_payoff": expected_payoff,
-                "win_rate": win_rate,
-                "param_stability": 0.5,
+                "max_drawdown_pct": dd,
+                "forward_result": forward,
+                "back_result": back,
             }
         )
     )
-    if is_consistent:
-        score = min(10.0, score + 0.5)
-    return score
 
 
 def extract_top_passes(state: dict[str, Any], state_file: Path, top_n: int = 20) -> list[dict[str, Any]]:
@@ -262,8 +267,8 @@ def _extract_from_optimization(
         profit = float(p.get("profit") or 0)
         pf = float(p.get("profit_factor") or 0)
         dd = float(p.get("max_drawdown_pct") or 0)
-        sharpe = float(p.get("sharpe_ratio") or 0)
         trades = int(p.get("total_trades") or 0)
+        win_rate = float(p.get("win_rate") or 0)
         score = _score_for_backtest(p)
 
         stress_worst_profit_num = None
@@ -293,9 +298,9 @@ def _extract_from_optimization(
                 "pf_num": pf,
                 "max_drawdown_pct": f"{dd:.1f}%",
                 "dd_num": dd,
-                "sharpe_ratio": f"{sharpe:.1f}",
-                "sharpe_num": sharpe,
                 "total_trades": trades,
+                "win_rate": f"{win_rate:.1f}%",
+                "win_rate_num": win_rate,
                 "forward_result": f"{forward:+.1f}" if forward != 0 else "0",
                 "forward_num": forward,
                 "back_result": f"{back:+.1f}" if back != 0 else "0",
@@ -322,8 +327,8 @@ def _extract_from_backtests(
         profit = float(p.get("profit") or 0)
         pf = float(p.get("profit_factor") or 0)
         dd = float(p.get("max_drawdown_pct") or 0)
-        sharpe = float(p.get("sharpe_ratio") or 0)
         trades = int(p.get("total_trades") or 0)
+        win_rate = float(p.get("win_rate") or 0)
 
         forward = float(p.get("forward_result") or 0)
         back = float(p.get("back_result") or 0)
@@ -359,9 +364,9 @@ def _extract_from_backtests(
                 "pf_num": pf,
                 "max_drawdown_pct": f"{dd:.1f}%",
                 "dd_num": dd,
-                "sharpe_ratio": f"{sharpe:.1f}",
-                "sharpe_num": sharpe,
                 "total_trades": trades,
+                "win_rate": f"{win_rate:.1f}%",
+                "win_rate_num": win_rate,
                 "forward_result": f"{forward:+.1f}" if forward != 0 else "0",
                 "forward_num": forward,
                 "back_result": f"{back:+.1f}" if back != 0 else "0",

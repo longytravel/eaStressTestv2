@@ -507,13 +507,14 @@
                     <table class="pass-table" id="passTable">
                         <thead>
                             <tr>
-                                <th data-sort="pass">Pass</th>
-                                <th data-sort="trades">Trades</th>
-                                <th data-sort="profit">Profit</th>
-                                <th data-sort="pf">PF</th>
-                                <th data-sort="dd">DD%</th>
-                                <th data-sort="insample">IS</th>
-                                <th data-sort="forward">FWD</th>
+                                <th data-sort="pass" title="Optimization pass number">Pass</th>
+                                <th data-sort="score" title="Go Live Score (0-10). Higher = more confidence to trade live.">Go Live</th>
+                                <th data-sort="trades" title="Number of trades. More = statistically reliable.">Trades</th>
+                                <th data-sort="profit" title="Total net profit in £">Profit</th>
+                                <th data-sort="pf" title="Profit Factor: gross wins ÷ gross losses. Below 1.5 = thin edge.">PF</th>
+                                <th data-sort="dd" title="Max Drawdown: worst peak-to-trough equity drop.">DD%</th>
+                                <th data-sort="insample" title="In-sample (back test) P&L. Historical performance.">IS</th>
+                                <th data-sort="forward" title="Forward test P&L. Recent market performance.">FWD</th>
                             </tr>
                         </thead>
                         <tbody id="passTableBody"></tbody>
@@ -776,9 +777,46 @@
         let profitHistogramChart = null;
         let mfeMaeChart = null;
         let holdingTimeChart = null;
-        let currentSort = { key: 'profit', desc: true };
+        let currentSort = { key: 'score', desc: true };  // Default sort by Go Live Score
         let stressSort = { key: 'profit', desc: true };
         let forwardSort = { key: 'profit', desc: true };
+
+        // Calculate Go Live Score matching engine/gates.py formula
+        function calculateGoLiveScore(profit, trades, pf, dd, forward, back) {
+            // Normalize each component to 0-1
+            function normalize(value, min, max, invert = false) {
+                if (max <= min) return 0;
+                const clamped = Math.max(min, Math.min(max, value));
+                const norm = (clamped - min) / (max - min);
+                return invert ? (1 - norm) : norm;
+            }
+
+            // Consistency: both periods positive = robust
+            let consistencyScore = 0;
+            if (forward > 0 && back > 0) {
+                const consistencyValue = Math.min(forward, back);
+                consistencyScore = normalize(consistencyValue, 0, 2000);
+            } else if (forward > 0 || back > 0) {
+                const positiveValue = Math.max(forward, back);
+                consistencyScore = normalize(positiveValue, 0, 2000) * 0.25;
+            }
+
+            const profitScore = normalize(profit, 0, 5000);
+            const tradesScore = normalize(trades, 50, 200);
+            const pfScore = normalize(pf, 1.0, 3.0);
+            const ddScore = normalize(dd, 0, 30, true);  // Inverted
+
+            // Weights from settings
+            const score = (
+                consistencyScore * 0.25 +
+                profitScore * 0.25 +
+                tradesScore * 0.20 +
+                pfScore * 0.15 +
+                ddScore * 0.15
+            ) * 10;
+
+            return Math.round(score * 10) / 10;  // Round to 1 decimal
+        }
         let stressScenarioState = null;
         let forwardWindowsState = null;
 
@@ -915,12 +953,26 @@
             const maxDD = parseFloat(document.getElementById('filterMaxDD').value) || 100;
             const consistentOnly = document.getElementById('filterConsistent').checked;
 
-            // Convert to array and filter
-            let passArray = Object.entries(passes).map(([num, data]) => ({
-                num: parseInt(num),
-                ...data
-            }));
+            // Convert to array and add Go Live Score
+            let passArray = Object.entries(passes).map(([num, data]) => {
+                const bt = data.bt || {};
+                const opt = data.opt || {};
+                const score = calculateGoLiveScore(
+                    bt.net_profit || 0,
+                    bt.total_trades || 0,
+                    bt.profit_factor || 0,
+                    bt.max_drawdown_pct || 0,
+                    opt.fwd_profit || 0,
+                    opt.in_profit || 0
+                );
+                return {
+                    num: parseInt(num),
+                    score,
+                    ...data
+                };
+            });
 
+            // Filter
             passArray = passArray.filter(p => {
                 const bt = p.bt || {};
                 const eq = p.equity || {};
@@ -946,6 +998,7 @@
 
                 switch (currentSort.key) {
                     case 'pass': aVal = a.num; bVal = b.num; break;
+                    case 'score': aVal = a.score || 0; bVal = b.score || 0; break;
                     case 'trades': aVal = bt_a.total_trades || 0; bVal = bt_b.total_trades || 0; break;
                     case 'profit': aVal = bt_a.net_profit || 0; bVal = bt_b.net_profit || 0; break;
                     case 'pf': aVal = bt_a.profit_factor || 0; bVal = bt_b.profit_factor || 0; break;
@@ -967,9 +1020,11 @@
 
                 const inClass = opt.in_profit > 0 ? 'positive' : 'negative';
                 const fwdClass = opt.fwd_profit > 0 ? 'positive' : 'negative';
+                const scoreClass = p.score >= 5 ? 'positive' : (p.score < 3 ? 'negative' : '');
 
                 tr.innerHTML = `
                     <td><strong>${p.num}</strong></td>
+                    <td class="${scoreClass}"><strong>${p.score.toFixed(1)}</strong></td>
                     <td>${bt.total_trades || '-'}</td>
                     <td>${formatMoney(bt.net_profit)}</td>
                     <td>${(bt.profit_factor || 0).toFixed(2)}</td>

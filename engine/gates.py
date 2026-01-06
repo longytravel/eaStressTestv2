@@ -318,49 +318,100 @@ def check_go_live_ready(state: dict) -> dict:
 
 def calculate_composite_score(metrics: dict) -> float:
     """
-    Calculate composite score from metrics using weighted formula.
+    Calculate Go Live Score from metrics.
 
-    Returns score from 0-10.
+    The Go Live Score answers: "Should I trade this live?"
+    Higher score (0-10) = more confidence to deploy with real money.
+
+    Components:
+        consistency (25%):   Both back+forward positive = not overfitted
+        total_profit (25%):  Actual money made - the goal
+        trade_count (20%):   Statistical confidence
+        profit_factor (15%): Edge sustainability
+        max_drawdown (15%):  Risk tolerance
+
+    Args:
+        metrics: Dict with keys like profit, total_trades, profit_factor,
+                 max_drawdown_pct, forward_result, back_result
+
+    Returns:
+        Score from 0-10
     """
-    # Accept common aliases used elsewhere in the codebase/state files.
-    # (Workflow state stores drawdown as `max_drawdown_pct` but scoring expects `max_drawdown`.)
-    if isinstance(metrics, dict):
-        if 'max_drawdown' not in metrics and 'max_drawdown_pct' in metrics:
-            metrics = {**metrics, 'max_drawdown': metrics.get('max_drawdown_pct', 0)}
+    if not isinstance(metrics, dict):
+        return 0.0
 
-    weights = settings.SCORE_WEIGHTS
-    score = 0
-    total_weight = 0
+    # Extract values with common aliases
+    profit = float(metrics.get('profit', metrics.get('total_profit', 0)) or 0)
+    trades = int(metrics.get('total_trades', metrics.get('trade_count', 0)) or 0)
+    pf = float(metrics.get('profit_factor', 0) or 0)
+    dd = float(metrics.get('max_drawdown_pct', metrics.get('max_drawdown', 0)) or 0)
+    forward = float(metrics.get('forward_result', 0) or 0)
+    back = float(metrics.get('back_result', 0) or 0)
 
-    # Normalize each metric to 0-1 scale, then apply weight
-    normalizers = {
-        'profit_factor': lambda x: min(1, (x - 1) / 2) if x > 1 else 0,  # 1-3 -> 0-1
-        'max_drawdown': lambda x: max(0, 1 - x / 50),  # 0-50% -> 1-0
-        'sharpe_ratio': lambda x: min(1, x / 3) if x > 0 else 0,  # 0-3 -> 0-1
-        'sortino_ratio': lambda x: min(1, x / 4) if x > 0 else 0,  # 0-4 -> 0-1
-        'calmar_ratio': lambda x: min(1, x / 5) if x > 0 else 0,  # 0-5 -> 0-1
-        'recovery_factor': lambda x: min(1, x / 5) if x > 0 else 0,  # 0-5 -> 0-1
-        'expected_payoff': lambda x: min(1, x / 50) if x > 0 else 0,  # 0-50 -> 0-1
-        'win_rate': lambda x: min(1, (x - 30) / 40) if x > 30 else 0,  # 30-70% -> 0-1
-        'param_stability': lambda x: x,  # Already 0-1
-    }
+    # Get ranges from settings (with defaults)
+    ranges = getattr(settings, 'GO_LIVE_SCORE_RANGES', {})
+    profit_range = ranges.get('total_profit', (0, 5000))
+    trades_range = ranges.get('trade_count', (50, 200))
+    pf_range = ranges.get('profit_factor', (1.0, 3.0))
+    dd_range = ranges.get('max_drawdown', (0, 30))
+    consistency_range = ranges.get('consistency_min', (0, 2000))
 
-    for metric_name, weight in weights.items():
-        value = metrics.get(metric_name, 0)
-        normalizer = normalizers.get(metric_name, lambda x: min(1, x))
+    # Get weights from settings
+    weights = getattr(settings, 'GO_LIVE_SCORE_WEIGHTS', {
+        'consistency': 0.25,
+        'total_profit': 0.25,
+        'trade_count': 0.20,
+        'profit_factor': 0.15,
+        'max_drawdown': 0.15,
+    })
 
-        try:
-            normalized = normalizer(float(value))
-            score += normalized * weight
-            total_weight += weight
-        except (ValueError, TypeError):
-            pass
+    def normalize(value: float, min_val: float, max_val: float, invert: bool = False) -> float:
+        """Normalize value to 0-1 range."""
+        if max_val <= min_val:
+            return 0.0
+        clamped = max(min_val, min(max_val, value))
+        normalized = (clamped - min_val) / (max_val - min_val)
+        return (1.0 - normalized) if invert else normalized
+
+    # Calculate each component
+
+    # 1. Consistency: Both periods profitable = robust across time
+    #    Score based on the WEAKER period (can't hide a bad back with great forward)
+    if forward > 0 and back > 0:
+        # Both positive - score based on minimum (weaker period)
+        consistency_value = min(forward, back)
+        consistency_score = normalize(consistency_value, consistency_range[0], consistency_range[1])
+    elif forward > 0 or back > 0:
+        # Only one positive - partial credit (25% of what full consistency would give)
+        positive_value = max(forward, back)
+        consistency_score = normalize(positive_value, consistency_range[0], consistency_range[1]) * 0.25
+    else:
+        # Both negative or zero - no consistency score
+        consistency_score = 0.0
+
+    # 2. Total Profit: Actual money made
+    profit_score = normalize(profit, profit_range[0], profit_range[1])
+
+    # 3. Trade Count: Statistical confidence (more trades = more reliable)
+    trades_score = normalize(trades, trades_range[0], trades_range[1])
+
+    # 4. Profit Factor: Edge quality (PF < 1.5 is thin edge)
+    pf_score = normalize(pf, pf_range[0], pf_range[1])
+
+    # 5. Max Drawdown: Risk (inverted - lower DD = higher score)
+    dd_score = normalize(dd, dd_range[0], dd_range[1], invert=True)
+
+    # Combine with weights
+    score = (
+        consistency_score * weights.get('consistency', 0.25) +
+        profit_score * weights.get('total_profit', 0.25) +
+        trades_score * weights.get('trade_count', 0.20) +
+        pf_score * weights.get('profit_factor', 0.15) +
+        dd_score * weights.get('max_drawdown', 0.15)
+    )
 
     # Scale to 0-10
-    if total_weight > 0:
-        score = (score / total_weight) * 10
-
-    return round(score, 1)
+    return round(score * 10, 1)
 
 
 def diagnose_failure(gates: dict, metrics: dict) -> list[str]:

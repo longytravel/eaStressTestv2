@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EA Stress Test - Boards</title>
+    <title>EA Stress Test - Workflow Summary</title>
     <style>
         :root {
             --bg: #f8f9fa;
@@ -177,7 +177,7 @@
     <div class="container">
         <header class="header">
             <div>
-                <h1>Boards</h1>
+                <h1>Workflow Summary</h1>
                 <div class="header-meta" id="headerMeta"></div>
             </div>
             <div class="header-meta">
@@ -365,22 +365,38 @@
         function renderWorkflows() {
             const rows = (DATA.workflows || []).filter(passesBaseFilters);
             const sorted = sortRows(rows, workflowSort, 'workflow');
+
+            const fmtFwdBack = (val) => {
+                const num = Number(val) || 0;
+                if (num === 0) return '-';
+                const sign = num >= 0 ? '+' : '';
+                return sign + formatMoney(num).replace('£', '');
+            };
+
+            const fwdBackClass = (val) => {
+                const num = Number(val) || 0;
+                if (num > 0) return 'color: var(--good)';
+                if (num < 0) return 'color: var(--bad)';
+                return '';
+            };
+
             const html = `
                 <table>
                     <thead>
                         <tr>
-                            <th class="left" data-sort="ea_name">EA</th>
-                            <th data-sort="symbol">Symbol</th>
-                            <th data-sort="timeframe">TF</th>
-                            <th data-sort="score_num">Score</th>
-                            <th data-sort="profit_num">Profit</th>
-                            <th data-sort="pf_num">PF</th>
-                            <th data-sort="dd_num">DD%</th>
-                            <th data-sort="trades_num">Trades</th>
-                            <th class="center" data-sort="go_live_ready">Go-live</th>
-                            <th class="left" data-sort="status">Status</th>
-                            <th class="left" data-sort="created_at">Created</th>
-                            <th class="left" data-sort="notes">Notes</th>
+                            <th class="left" data-sort="ea_name" title="Expert Advisor name">EA</th>
+                            <th data-sort="symbol" title="Trading symbol">Symbol</th>
+                            <th data-sort="timeframe" title="Chart timeframe">TF</th>
+                            <th data-sort="score_num" title="Go Live Score (0-10). Higher = more confidence to trade live. Based on: consistency (25%), profit (25%), trades (20%), PF (15%), DD (15%)">Go Live</th>
+                            <th data-sort="profit_num" title="Total net profit in £">Profit</th>
+                            <th data-sort="forward_num" title="Forward test P&L (£). Recent market performance.">FWD</th>
+                            <th data-sort="back_num" title="Back test P&L (£). Historical performance.">Back</th>
+                            <th data-sort="trades_num" title="Number of trades. More = statistically reliable.">Trades</th>
+                            <th data-sort="pf_num" title="Profit Factor: gross wins ÷ gross losses. Below 1.5 = thin edge.">PF</th>
+                            <th data-sort="dd_num" title="Max Drawdown: worst peak-to-trough equity drop.">DD%</th>
+                            <th class="left" data-sort="status" title="Current workflow status">Status</th>
+                            <th class="left" data-sort="created_at" title="When the workflow was created">Created</th>
+                            <th class="left" data-sort="notes" title="Auto-generated notes about the workflow">Notes</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -389,12 +405,13 @@
                                 <td class="left"><a href="${w.dashboard_link}">${w.ea_name}</a><div class="muted">${w.workflow_id}</div></td>
                                 <td>${w.symbol || '-'}</td>
                                 <td>${w.timeframe || '-'}</td>
-                                <td>${formatNum(w.score_num || 0, 1)}</td>
+                                <td><strong>${formatNum(w.score_num || 0, 1)}</strong></td>
                                 <td>${formatMoney(w.profit_num || 0)}</td>
+                                <td style="${fwdBackClass(w.forward_num)}">${fmtFwdBack(w.forward_num)}</td>
+                                <td style="${fwdBackClass(w.back_num)}">${fmtFwdBack(w.back_num)}</td>
+                                <td>${(w.trades_num || 0).toLocaleString()}</td>
                                 <td>${formatNum(w.pf_num || 0, 2)}</td>
                                 <td>${formatNum(w.dd_num || 0, 1)}%</td>
-                                <td>${(w.trades_num || 0).toLocaleString()}</td>
-                                <td class="center">${w.go_live_ready === true ? '<span class="pill good">YES</span>' : (w.go_live_ready === false ? '<span class="pill bad">NO</span>' : '<span class="pill">-</span>')}</td>
                                 <td class="left">${w.status || '-'}</td>
                                 <td class="left" title="${w.created_at || ''}">${w.created_at_fmt || w.created_at || '-'}</td>
                                 <td class="left muted">${w.notes || ''}</td>

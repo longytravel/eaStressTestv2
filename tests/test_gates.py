@@ -293,19 +293,17 @@ class TestCheckGoLiveReady:
 
 
 class TestCompositeScore:
-    """Tests for composite score calculation."""
+    """Tests for Go Live Score calculation."""
 
     def test_good_metrics(self):
-        """Test score with good metrics."""
+        """Test Go Live Score with good metrics - consistent, profitable, enough trades."""
         metrics = {
-            'profit_factor': 2.5,
-            'max_drawdown': 15.0,
-            'sharpe_ratio': 2.0,
-            'sortino_ratio': 2.5,
-            'calmar_ratio': 3.0,
-            'recovery_factor': 3.0,
-            'expected_payoff': 30.0,
-            'win_rate': 60.0,
+            'profit': 4000,  # Good profit
+            'total_trades': 150,  # Good trade count
+            'profit_factor': 2.5,  # Good PF
+            'max_drawdown_pct': 10.0,  # Low DD
+            'forward_result': 1500,  # Positive forward
+            'back_result': 1200,  # Positive back = consistent
         }
         score = calculate_composite_score(metrics)
 
@@ -314,16 +312,14 @@ class TestCompositeScore:
         assert score <= 10.0
 
     def test_poor_metrics(self):
-        """Test score with poor metrics."""
+        """Test Go Live Score with poor metrics."""
         metrics = {
-            'profit_factor': 1.2,
-            'max_drawdown': 40.0,
-            'sharpe_ratio': 0.5,
-            'sortino_ratio': 0.5,
-            'calmar_ratio': 0.5,
-            'recovery_factor': 0.5,
-            'expected_payoff': 5.0,
-            'win_rate': 45.0,
+            'profit': 500,  # Low profit
+            'total_trades': 40,  # Too few trades
+            'profit_factor': 1.2,  # Thin edge
+            'max_drawdown_pct': 35.0,  # High DD
+            'forward_result': -200,  # Negative forward
+            'back_result': 300,  # Only back positive = inconsistent
         }
         score = calculate_composite_score(metrics)
 
@@ -333,8 +329,36 @@ class TestCompositeScore:
         """Test score with empty metrics."""
         score = calculate_composite_score({})
 
-        # Empty metrics result in low score (normalizers may have defaults)
-        assert score < 5.0
+        # Empty metrics result in low score
+        assert score < 2.0
+
+    def test_consistency_matters(self):
+        """Test that both forward+back positive scores higher than one positive."""
+        # Both positive
+        consistent = {
+            'profit': 3000,
+            'total_trades': 100,
+            'profit_factor': 2.0,
+            'max_drawdown_pct': 15.0,
+            'forward_result': 1000,
+            'back_result': 800,
+        }
+
+        # Only forward positive
+        inconsistent = {
+            'profit': 3000,
+            'total_trades': 100,
+            'profit_factor': 2.0,
+            'max_drawdown_pct': 15.0,
+            'forward_result': 1000,
+            'back_result': -500,
+        }
+
+        consistent_score = calculate_composite_score(consistent)
+        inconsistent_score = calculate_composite_score(inconsistent)
+
+        # Consistent should score higher
+        assert consistent_score > inconsistent_score
 
 
 class TestDiagnoseFailure:

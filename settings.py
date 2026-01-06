@@ -141,21 +141,38 @@ MAX_EA_CORRELATION = 0.70  # Flag if correlation > 70%
 CORRELATION_LOOKBACK_DAYS = 252  # ~1 trading year
 
 # =============================================================================
-# SCORING WEIGHTS (for composite score calculation)
+# GO LIVE SCORE WEIGHTS
 # =============================================================================
+#
+# The "Go Live Score" answers: "Should I trade this live?"
+# Higher score = more confidence to deploy with real money.
+#
+# Components:
+#   consistency   - Back AND forward both profitable = not overfitted
+#   total_profit  - Actual money made (the goal)
+#   trade_count   - Statistical significance (more trades = more reliable)
+#   profit_factor - Edge sustainability (will slippage kill it?)
+#   max_drawdown  - Risk tolerance (can you stomach the worst case?)
 
-SCORE_WEIGHTS = {
-    # Profit-focused weights - actual money matters most
-    'expected_payoff': 0.20,   # Profit per trade - key metric (was 0.10)
-    'calmar_ratio': 0.15,      # Annual return / max DD (was 0.10)
-    'profit_factor': 0.15,     # Edge quality
-    'max_drawdown': 0.15,      # Risk - inverted, lower is better
-    'sharpe_ratio': 0.10,      # Consistency (was 0.15)
-    'sortino_ratio': 0.10,     # Downside consistency (was 0.15)
-    'recovery_factor': 0.05,   # How fast recovers from DD (was 0.10)
-    'win_rate': 0.05,          # Psychological comfort
-    'param_stability': 0.05,   # Robustness bonus
+GO_LIVE_SCORE_WEIGHTS = {
+    'consistency': 0.25,      # Both back+forward positive = robust across time
+    'total_profit': 0.25,     # Actual money made - the end goal
+    'trade_count': 0.20,      # Statistical confidence (50-200 trades)
+    'profit_factor': 0.15,    # Edge quality (PF < 1.5 = thin edge)
+    'max_drawdown': 0.15,     # Risk (inverted - lower DD = higher score)
 }
+
+# Normalization ranges for Go Live Score
+GO_LIVE_SCORE_RANGES = {
+    'total_profit': (0, 5000),      # £0-5000 -> 0-1
+    'trade_count': (50, 200),       # 50-200 trades -> 0-1
+    'profit_factor': (1.0, 3.0),    # PF 1.0-3.0 -> 0-1
+    'max_drawdown': (0, 30),        # DD 0-30% -> 1-0 (inverted)
+    'consistency_min': (0, 2000),   # min(back,fwd) £0-2000 -> 0-1
+}
+
+# Legacy alias for backwards compatibility
+SCORE_WEIGHTS = GO_LIVE_SCORE_WEIGHTS
 
 # =============================================================================
 # BEST PASS SELECTION (Step 9)

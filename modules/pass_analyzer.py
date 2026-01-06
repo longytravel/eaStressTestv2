@@ -10,6 +10,7 @@ from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import settings
+from engine.gates import calculate_composite_score as calculate_go_live_score
 
 
 def analyze_passes(
@@ -80,8 +81,8 @@ def analyze_passes(
         p['back_result'] = params.get('Back Result', 0)
         p['is_consistent'] = p['forward_result'] > 0 and p['back_result'] > 0
 
-        # Calculate composite score
-        p['composite_score'] = calculate_composite_score(p)
+        # Calculate Go Live Score using new formula
+        p['composite_score'] = calculate_go_live_score(p)
 
         filtered.append(p)
 
@@ -128,76 +129,12 @@ def analyze_passes(
 
 
 def calculate_composite_score(p: dict) -> float:
+    """Calculate Go Live Score for a pass.
+
+    This is a convenience wrapper around engine.gates.calculate_composite_score.
+    The Go Live Score considers: consistency, profit, trades, PF, drawdown.
     """
-    DEPRECATED: Calculate composite score for a pass.
-
-    NOTE: This function is deprecated. Claude's /stats-analyzer skill now
-    provides intelligent pass selection based on EA context, parameter
-    relationships, and forward/back test analysis. This function remains
-    for backwards compatibility and basic insights generation only.
-
-    Claude should be used for final pass selection, not this Python scoring.
-    """
-    import warnings
-    warnings.warn(
-        "calculate_composite_score() is deprecated. "
-        "Use Claude /stats-analyzer for intelligent pass selection.",
-        DeprecationWarning,
-        stacklevel=2
-    )
-    score = 0
-
-    # Profit factor contribution (0-3 points)
-    pf = p.get('profit_factor', 0)
-    if pf >= 2.5:
-        score += 3
-    elif pf >= 2.0:
-        score += 2.5
-    elif pf >= 1.5:
-        score += 2
-    elif pf >= 1.2:
-        score += 1
-
-    # Sharpe ratio contribution (0-2 points)
-    sharpe = p.get('sharpe_ratio', 0)
-    if sharpe >= 15:
-        score += 2
-    elif sharpe >= 10:
-        score += 1.5
-    elif sharpe >= 5:
-        score += 1
-    elif sharpe >= 1:
-        score += 0.5
-
-    # Drawdown contribution (0-2 points, lower is better)
-    dd = p.get('max_drawdown_pct', 100)
-    if dd <= 5:
-        score += 2
-    elif dd <= 10:
-        score += 1.5
-    elif dd <= 20:
-        score += 1
-    elif dd <= 30:
-        score += 0.5
-
-    # Trade count contribution (0-1 point)
-    trades = p.get('total_trades', 0)
-    if trades >= 200:
-        score += 1
-    elif trades >= 100:
-        score += 0.7
-    elif trades >= 50:
-        score += 0.4
-
-    # Consistency bonus (0-2 points)
-    forward = p.get('forward_result', 0)
-    back = p.get('back_result', 0)
-    if forward > 0 and back > 0:
-        score += 2
-    elif forward > 0 or back > 0:
-        score += 0.5
-
-    return round(score, 2)
+    return calculate_go_live_score(p)
 
 
 def generate_insights(

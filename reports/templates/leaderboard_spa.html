@@ -111,6 +111,14 @@
         .quick-stats .stat-label { opacity: 0.7; }
         .quick-stats .stat-value { font-weight: 600; }
 
+        /* Tooltips for column headers */
+        .leaderboard-table th[title] {
+            cursor: help;
+        }
+        .leaderboard-table th[title]:hover {
+            background: #d0d4d8;
+        }
+
         /* Filter Bar */
         .filter-bar {
             display: flex;
@@ -253,7 +261,7 @@
                     <span>|</span>
                     <span id="lastUpdated"></span>
                     <span>|</span>
-                    <a href="../boards/index.html">Boards</a>
+                    <a href="../boards/index.html">Workflow Summary</a>
                 </div>
             </div>
         </header>
@@ -285,7 +293,7 @@
         <!-- Quick Stats -->
         <div class="quick-stats">
             <div class="stat">
-                <span class="stat-label">Avg Score:</span>
+                <span class="stat-label">Avg Go Live:</span>
                 <span class="stat-value" id="avgScore">-</span>
             </div>
             <div class="stat">
@@ -297,8 +305,8 @@
                 <span class="stat-value" id="avgDD">-</span>
             </div>
             <div class="stat">
-                <span class="stat-label">Avg Sharpe:</span>
-                <span class="stat-value" id="avgSharpe">-</span>
+                <span class="stat-label">Avg Trades:</span>
+                <span class="stat-value" id="avgTrades">-</span>
             </div>
             <div class="stat">
                 <span class="stat-label">Best Profit:</span>
@@ -320,18 +328,18 @@
             <table class="leaderboard-table" id="leaderboardTable">
                 <thead>
                     <tr>
-                        <th data-sort="rank">#</th>
-                        <th data-sort="ea_name">EA / Pass</th>
-                        <th data-sort="status">Status</th>
-                        <th data-sort="score">Score</th>
-                        <th data-sort="profit">Profit</th>
-                        <th data-sort="stress" title="Stress scenarios are run only for the workflow’s stress-tested pass (see tooltip per row).">Stress</th>
-                        <th data-sort="pf">PF</th>
-                        <th data-sort="dd">DD%</th>
-                        <th data-sort="sharpe">Sharpe</th>
-                        <th data-sort="trades">Trades</th>
-                        <th data-sort="forward">FWD</th>
-                        <th data-sort="back">Back</th>
+                        <th data-sort="rank" title="Ranking by Go Live Score">#</th>
+                        <th data-sort="ea_name" title="Expert Advisor name and pass number">EA / Pass</th>
+                        <th data-sort="status" title="Consistent = profitable in both back AND forward tests">Status</th>
+                        <th data-sort="score" title="Go Live Score (0-10). Higher = more confidence to trade live. Based on: consistency (25%), profit (25%), trades (20%), PF (15%), DD (15%)">Go Live</th>
+                        <th data-sort="profit" title="Total net profit in £">Profit</th>
+                        <th data-sort="stress" title="Worst P&L from stress scenarios. Only shown for the pass that was stress-tested per workflow.">Stress</th>
+                        <th data-sort="pf" title="Profit Factor: gross wins ÷ gross losses. Below 1.5 = thin edge that slippage could kill.">PF</th>
+                        <th data-sort="dd" title="Max Drawdown: worst peak-to-trough equity drop. Can you stomach this loss?">DD%</th>
+                        <th data-sort="trades" title="Number of trades. More trades = more statistically reliable results.">Trades</th>
+                        <th data-sort="forward" title="Forward test P&L (£). Recent market performance after the in-sample period.">FWD</th>
+                        <th data-sort="back" title="Back test P&L (£). Historical performance during the in-sample period.">Back</th>
+                        <th data-sort="winrate" title="Win Rate: percentage of profitable trades. Not in score - shown for psychological assessment.">Win%</th>
                     </tr>
                 </thead>
                 <tbody id="leaderboardBody"></tbody>
@@ -391,13 +399,13 @@
                 const avgScore = passes.reduce((s, p) => s + (p.score_num || 0), 0) / passes.length;
                 const avgPF = passes.reduce((s, p) => s + (p.pf_num || 0), 0) / passes.length;
                 const avgDD = passes.reduce((s, p) => s + (p.dd_num || 0), 0) / passes.length;
-                const avgSharpe = passes.reduce((s, p) => s + (p.sharpe_num || 0), 0) / passes.length;
+                const avgTrades = passes.reduce((s, p) => s + (p.total_trades || 0), 0) / passes.length;
                 const bestProfit = Math.max(...passes.map(p => p.profit_num || 0));
 
                 document.getElementById('avgScore').textContent = avgScore.toFixed(1);
                 document.getElementById('avgPF').textContent = avgPF.toFixed(2);
                 document.getElementById('avgDD').textContent = avgDD.toFixed(1) + '%';
-                document.getElementById('avgSharpe').textContent = avgSharpe.toFixed(1);
+                document.getElementById('avgTrades').textContent = Math.round(avgTrades);
                 document.getElementById('bestProfit').textContent = '£' + bestProfit.toLocaleString();
             }
         }
@@ -486,10 +494,10 @@
                     case 'stress': aVal = (a.stress_worst_profit_num ?? -1e18); bVal = (b.stress_worst_profit_num ?? -1e18); break;
                     case 'pf': aVal = a.pf_num || 0; bVal = b.pf_num || 0; break;
                     case 'dd': aVal = a.dd_num || 0; bVal = b.dd_num || 0; break;
-                    case 'sharpe': aVal = a.sharpe_num || 0; bVal = b.sharpe_num || 0; break;
                     case 'trades': aVal = a.total_trades || 0; bVal = b.total_trades || 0; break;
                     case 'forward': aVal = a.forward_num || 0; bVal = b.forward_num || 0; break;
                     case 'back': aVal = a.back_num || 0; bVal = b.back_num || 0; break;
+                    case 'winrate': aVal = a.win_rate_num || 0; bVal = b.win_rate_num || 0; break;
                     default: aVal = 0; bVal = 0;
                 }
 
@@ -516,6 +524,8 @@
                 const stressClass = stressNum == null ? '' : (stressNum >= 0 ? 'positive' : 'negative');
                 const stressTitle = (p.stress_worst_scenario && p.stress_worst_scenario !== '-') ? p.stress_worst_scenario : '';
                 const stressText = stressNum == null ? '-' : formatMoney(stressNum);
+                const winRate = p.win_rate || p.win_rate_num || 0;
+                const winRateText = winRate > 0 ? winRate.toFixed(1) + '%' : '-';
 
                 tr.innerHTML = `
                     <td><strong>${idx + 1}</strong></td>
@@ -531,10 +541,10 @@
                     <td class="${stressClass}" title="${stressTitle}">${stressText}</td>
                     <td class="${pfClass}">${p.profit_factor}</td>
                     <td class="${ddClass}">${p.max_drawdown_pct}</td>
-                    <td>${p.sharpe_ratio}</td>
                     <td>${p.total_trades}</td>
                     <td class="${fwdClass}">${p.forward_result}</td>
                     <td class="${backClass}">${p.back_result}</td>
+                    <td>${winRateText}</td>
                 `;
 
                 tbody.appendChild(tr);
