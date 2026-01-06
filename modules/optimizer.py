@@ -344,16 +344,21 @@ def run_optimization(
             results['forward_xml_path'] = str(forward_xml_path)
             _merge_forward_results(results.get('results', []), forward.get('results', []))
     else:
-        # Cache file exists, get basic info from filename
-        # Format: EA.Symbol.Timeframe.FromDate.ToDate.Mode.Hash.opt
+        # Cache file exists but NO XML report means MT5 found 0 valid passes
+        # that met the OnTester criterion (e.g., minimum trades threshold).
+        # MT5 only generates XML when there are valid optimization results.
         results = {
-            'success': True,
-            'passes': 1000,  # Placeholder - cache doesn't have exact count easily
+            'success': False,
+            'passes': 0,
             'results': [],
             'best_result': None,
             'top_20': [],
             'cache_path': str(cache_path),
-            'errors': ['Detailed results not available - using cache file'],
+            'errors': [
+                'No XML report generated - optimization found 0 valid passes',
+                'This usually means all parameter combinations were rejected by OnTester',
+                '(e.g., too few trades, negative profit, etc.)'
+            ],
         }
 
     results['html_path'] = str(html_path) if html_path else None
