@@ -10,36 +10,136 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional
 
+import settings
 
 # OnTester function that returns custom optimization criterion
-# Returns Sharpe Ratio-like metric: (profit / trades) / stddev
-ONTESTER_CODE = '''
+# Profit-first with equity curve smoothness and soft drawdown penalty
+# Note: {ONTESTER_MIN_TRADES} is replaced at injection time with settings.ONTESTER_MIN_TRADES
+ONTESTER_CODE_TEMPLATE = '''
 //+------------------------------------------------------------------+
 //| OnTester - Injected by EA Stress Test System                     |
+//| Criterion: Profit × R² × sqrt(trades) × DD_factor                |
+//|                                                                  |
+//| - Profit: primary driver (more profit = higher score)            |
+//| - R²: equity curve linearity (0-1, rewards smooth growth)        |
+//| - sqrt(trades): statistical confidence                           |
+//| - DD_factor: soft drawdown penalty (no hard cutoff)              |
+//|   0% DD = 1.0, 25% DD = 0.67, 50% DD = 0.5                       |
 //+------------------------------------------------------------------+
 double OnTester()
 {
-    // Get basic statistics
     double profit = TesterStatistics(STAT_PROFIT);
     double trades = TesterStatistics(STAT_TRADES);
+    double maxDD = TesterStatistics(STAT_EQUITY_DDREL_PERCENT);
     double profitFactor = TesterStatistics(STAT_PROFIT_FACTOR);
-    double drawdownPct = TesterStatistics(STAT_EQUITY_DDREL_PERCENT);
-    double sharpe = TesterStatistics(STAT_SHARPE_RATIO);
 
-    // Minimum trades filter
-    if(trades < 50) return -1000;
+    // Minimum trades filter for statistical significance
+    if(trades < {ONTESTER_MIN_TRADES}) return -1000;
+    if(profit <= 0) return -500;
 
-    // Return Sharpe ratio as primary criterion
-    // Falls back to adjusted profit factor if Sharpe unavailable
-    if(sharpe != 0) return sharpe;
+    // Soft drawdown penalty: 1/(1 + DD/50)
+    // 0% DD = 1.0, 25% DD = 0.67, 50% DD = 0.5, 100% DD = 0.33
+    double ddFactor = 1.0 / (1.0 + maxDD / 50.0);
 
-    // Fallback: PF adjusted by drawdown
-    if(profitFactor > 0 && drawdownPct > 0)
-        return profitFactor * (100.0 - drawdownPct) / 100.0;
+    // Build equity curve from deal history for R² calculation
+    if(!HistorySelect(0, TimeCurrent()))
+    {
+        // Fallback without R² if history unavailable
+        return profit * ddFactor * MathSqrt(trades / 100.0);
+    }
 
-    return profit / trades;
+    int totalDeals = HistoryDealsTotal();
+    if(totalDeals < 10)
+    {
+        // Not enough deals for regression - use simple formula
+        return profit * ddFactor * MathSqrt(trades / 100.0);
+    }
+
+    // Build equity curve from closed deals
+    double equity[];
+    ArrayResize(equity, 0);
+    double cumProfit = 0;
+
+    for(int i = 0; i < totalDeals; i++)
+    {
+        ulong ticket = HistoryDealGetTicket(i);
+        if(ticket == 0) continue;
+
+        long dealType = HistoryDealGetInteger(ticket, DEAL_TYPE);
+        if(dealType == DEAL_TYPE_BUY || dealType == DEAL_TYPE_SELL)
+        {
+            double dealProfit = HistoryDealGetDouble(ticket, DEAL_PROFIT);
+            double dealSwap = HistoryDealGetDouble(ticket, DEAL_SWAP);
+            double dealComm = HistoryDealGetDouble(ticket, DEAL_COMMISSION);
+            cumProfit += dealProfit + dealSwap + dealComm;
+
+            int size = ArraySize(equity);
+            ArrayResize(equity, size + 1);
+            equity[size] = cumProfit;
+        }
+    }
+
+    int n = ArraySize(equity);
+    if(n < 10)
+    {
+        return profit * ddFactor * MathSqrt(trades / 100.0);
+    }
+
+    // Linear regression for R²
+    double sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+    for(int i = 0; i < n; i++)
+    {
+        double x = (double)i;
+        double y = equity[i];
+        sumX += x;
+        sumY += y;
+        sumXY += x * y;
+        sumX2 += x * x;
+    }
+
+    double nD = (double)n;
+    double denom = nD * sumX2 - sumX * sumX;
+    if(MathAbs(denom) < 1e-10)
+    {
+        return profit * ddFactor * MathSqrt(trades / 100.0);
+    }
+
+    double slope = (nD * sumXY - sumX * sumY) / denom;
+    double intercept = (sumY - slope * sumX) / nD;
+    double meanY = sumY / nD;
+
+    double ssTotal = 0, ssResidual = 0;
+    for(int i = 0; i < n; i++)
+    {
+        double y = equity[i];
+        double yPred = slope * (double)i + intercept;
+        ssTotal += (y - meanY) * (y - meanY);
+        ssResidual += (y - yPred) * (y - yPred);
+    }
+
+    double rSquared = 1.0;
+    if(ssTotal > 1e-10)
+        rSquared = 1.0 - (ssResidual / ssTotal);
+    if(rSquared < 0) rSquared = 0;
+    if(rSquared > 1) rSquared = 1;
+
+    // Final score: Profit × R² × sqrt(trades) × DD_factor
+    double score = profit * rSquared * MathSqrt(trades / 100.0) * ddFactor;
+
+    // Small bonus for good profit factor
+    if(profitFactor > 1.5)
+        score *= (1.0 + (profitFactor - 1.5) * 0.03);
+
+    return score;
 }
 '''
+
+
+def get_ontester_code() -> str:
+    """Get OnTester code with configured minimum trades threshold."""
+    min_trades = getattr(settings, 'ONTESTER_MIN_TRADES', 30)
+    return ONTESTER_CODE_TEMPLATE.replace('{ONTESTER_MIN_TRADES}', str(min_trades))
+
 
 # Safety guards to prevent dangerous operations during testing
 SAFETY_GUARDS = '''
@@ -206,7 +306,7 @@ def inject_ontester(content: str) -> tuple[str, bool]:
         injection_point = comment_end
         prefix = '\n'
 
-    modified = content[:injection_point] + prefix + ONTESTER_CODE + '\n' + content[injection_point:]
+    modified = content[:injection_point] + prefix + get_ontester_code() + '\n' + content[injection_point:]
     return modified, True
 
 

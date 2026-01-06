@@ -138,6 +138,14 @@ def create_ini_file(
 
     for param in param_ranges:
         name = param['name']
+
+        # Handle fixed boolean parameters (e.g., {'name': 'Enable_X', 'fixed': True})
+        if 'fixed' in param and isinstance(param['fixed'], bool):
+            # Convert Python bool to MQL5 bool string
+            val = 'true' if param['fixed'] else 'false'
+            ini_lines.append(f'{name}={val}||{val}||0||{val}||N')
+            continue
+
         start = param.get('start', param.get('default', 0))
         step = param.get('step', 1)
         stop = param.get('stop', start)

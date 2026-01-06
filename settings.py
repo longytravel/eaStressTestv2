@@ -74,6 +74,10 @@ MAX_DRAWDOWN_PCT = 30.0
 # Minimum trades for statistical significance
 MIN_TRADES = 50
 
+# OnTester minimum trades for optimization (can be lower for comprehensive searches)
+# This is used by the injected OnTester function during optimization
+ONTESTER_MIN_TRADES = 30  # Lower than MIN_TRADES to let genetic algorithm explore
+
 # Monte Carlo simulation
 MC_ITERATIONS = 10000
 MC_CONFIDENCE_MIN = 70.0  # Minimum confidence percentage
@@ -173,7 +177,7 @@ BEST_PASS_SELECTION = "score"
 #
 # If True, Step 8b (stats analysis) is done automatically by score to enable
 # unattended / batch runs (no LLM dependency). Interactive runs can keep this False.
-AUTO_STATS_ANALYSIS = False
+AUTO_STATS_ANALYSIS = True
 AUTO_STATS_TOP_N = 20
 
 # Post-steps after report generation
@@ -227,7 +231,8 @@ AUTO_RUN_STRESS_SCENARIOS = True
 # Default optimization criteria
 # 0=Balance max, 1=Profit Factor max, 2=Expected Payoff max,
 # 3=Drawdown min, 4=Recovery Factor max, 5=Sharpe Ratio max
-OPTIMIZATION_CRITERION = 5  # Sharpe Ratio
+# 6=Custom max (uses OnTester return value)
+OPTIMIZATION_CRITERION = 6  # Custom: Profit × R² × sqrt(trades)
 
 # Maximum passes to keep from optimization
 MAX_OPTIMIZATION_PASSES = 1000
