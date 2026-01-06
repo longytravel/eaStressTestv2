@@ -380,6 +380,7 @@
                             <th class="center" data-sort="go_live_ready">Go-live</th>
                             <th class="left" data-sort="status">Status</th>
                             <th class="left" data-sort="created_at">Created</th>
+                            <th class="left" data-sort="notes">Notes</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -395,7 +396,8 @@
                                 <td>${(w.trades_num || 0).toLocaleString()}</td>
                                 <td class="center">${w.go_live_ready === true ? '<span class="pill good">YES</span>' : (w.go_live_ready === false ? '<span class="pill bad">NO</span>' : '<span class="pill">-</span>')}</td>
                                 <td class="left">${w.status || '-'}</td>
-                                <td class="left">${w.created_at || '-'}</td>
+                                <td class="left" title="${w.created_at || ''}">${w.created_at_fmt || w.created_at || '-'}</td>
+                                <td class="left muted">${w.notes || ''}</td>
                             </tr>
                         `).join('')}
                     </tbody>

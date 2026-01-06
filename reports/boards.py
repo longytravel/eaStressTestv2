@@ -27,13 +27,120 @@ def _as_list(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
 
 
+def _format_date(iso_date: str) -> str:
+    """Convert ISO date to human-readable format like 'Jan 6, 09:18'."""
+    if not iso_date:
+        return "-"
+    try:
+        dt = datetime.fromisoformat(iso_date.replace("Z", "+00:00"))
+        return dt.strftime("%b %d, %H:%M")
+    except Exception:
+        return iso_date[:16] if len(iso_date) > 16 else iso_date
+
+
+def _generate_notes(state: dict[str, Any]) -> str:
+    """Generate a short note summarizing key workflow characteristics."""
+    notes = []
+    features = []
+
+    # Gather all params from various sources
+    all_params: dict[str, Any] = {}
+
+    # Source 1: optimization_ranges
+    for r in _as_list(state.get("optimization_ranges")):
+        if isinstance(r, dict) and r.get("name"):
+            all_params[r["name"]] = r.get("default") or r.get("value")
+
+    # Source 2: selected_passes (best pass params)
+    selected = _as_list(state.get("selected_passes"))
+    if selected and isinstance(selected[0], dict):
+        all_params.update(selected[0].get("params", {}))
+
+    # Source 3: optimization_results top pass
+    opt_results = _as_dict(state.get("optimization_results"))
+    top_20 = _as_list(opt_results.get("top_20"))
+    if top_20 and isinstance(top_20[0], dict):
+        all_params.update(top_20[0].get("params", {}))
+
+    # Count optimized params
+    opt_ranges = _as_list(state.get("optimization_ranges"))
+    opt_count = sum(1 for r in opt_ranges if isinstance(r, dict) and r.get("optimize"))
+    if opt_count:
+        notes.append(f"{opt_count} params")
+
+    # Detect features from params
+    # London session sizing: if London_Size_Multiplier > 1
+    london_mult = all_params.get("London_Size_Multiplier", 1)
+    if london_mult and float(london_mult) > 1:
+        features.append(f"London {london_mult}x")
+
+    # Asymmetric params: if Long_StopLoss differs from StopLoss
+    long_sl = all_params.get("Long_StopLoss_Points")
+    sl = all_params.get("StopLoss_Points")
+    if long_sl and sl and long_sl != sl:
+        features.append("Asymmetric")
+
+    # Check Enable_ flags
+    if all_params.get("Enable_Session_Sizing") in (True, "true", 1):
+        if "London" not in str(features):
+            features.append("Session sizing")
+    if all_params.get("Enable_Breakeven") in (True, "true", 1):
+        features.append("BE")
+    if all_params.get("Enable_Trailing") in (True, "true", 1):
+        features.append("Trail")
+    if all_params.get("Enable_Regular_Divergence") in (True, "true", 1):
+        features.append("RegDiv")
+
+    if features:
+        notes.append(" + ".join(features))
+
+    # Check if stress tested
+    stress = _as_dict(state.get("stress_scenarios"))
+    if stress.get("scenarios"):
+        notes.append("stress tested")
+
+    return " | ".join(notes) if notes else ""
+
+
 def _best_workflow_metrics(state: dict[str, Any]) -> dict[str, Any]:
+    # Priority 1: Best optimization pass (most accurate after optimization completes)
+    opt_results = _as_dict(state.get("optimization_results"))
+    top_20 = _as_list(opt_results.get("top_20"))
+    if top_20 and isinstance(top_20[0], dict):
+        best = top_20[0]
+        if best.get("profit") or best.get("total_trades"):
+            return {
+                "profit": best.get("profit", 0),
+                "profit_factor": best.get("profit_factor", 0),
+                "max_drawdown_pct": best.get("max_drawdown_pct", 0),
+                "total_trades": best.get("total_trades", 0),
+                "sharpe_ratio": best.get("sharpe_ratio", 0),
+                "recovery_factor": best.get("recovery_factor", 0),
+                "expected_payoff": best.get("expected_payoff", 0),
+            }
+
+    # Priority 2: Backtest results (if backtests were run on selected passes)
+    backtest_results = _as_dict(state.get("backtest_results"))
+    if backtest_results:
+        # Get best backtest by profit
+        best_bt = max(backtest_results.values(), key=lambda x: x.get("profit", 0) if isinstance(x, dict) else 0, default={})
+        if isinstance(best_bt, dict) and (best_bt.get("profit") or best_bt.get("total_trades")):
+            return {
+                "profit": best_bt.get("profit", 0),
+                "profit_factor": best_bt.get("profit_factor", 0),
+                "max_drawdown_pct": best_bt.get("max_drawdown_pct", 0),
+                "total_trades": best_bt.get("total_trades", 0),
+                "sharpe_ratio": best_bt.get("sharpe_ratio", 0),
+            }
+
+    # Priority 3: Explicit metrics field (may be from validation)
     metrics = _as_dict(state.get("metrics"))
     if any(k in metrics for k in ("profit", "profit_factor", "max_drawdown_pct", "total_trades")) and (
         metrics.get("total_trades") or metrics.get("profit") or metrics.get("profit_factor") or metrics.get("max_drawdown_pct")
     ):
         return metrics
 
+    # Priority 4: Step 5 validation result (fallback for early-stage workflows)
     steps = _as_dict(state.get("steps"))
     step5 = _as_dict(_as_dict(steps.get("5_validate_trades")).get("result"))
     if step5 and (step5.get("total_trades") or step5.get("profit") or step5.get("profit_factor") or step5.get("max_drawdown_pct")):
@@ -60,6 +167,9 @@ def generate_boards(
     workflows: list[dict[str, Any]] = []
     scenarios: list[dict[str, Any]] = []
 
+    # Statuses to exclude from boards (stuck/failed workflows)
+    EXCLUDED_STATUSES = {'failed', 'awaiting_param_analysis', 'awaiting_stats_analysis', 'awaiting_ea_fix', 'pending'}
+
     for state_file in sorted(runs_path.glob("workflow_*.json")):
         try:
             state = json.loads(state_file.read_text(encoding="utf-8"))
@@ -72,11 +182,16 @@ def generate_boards(
         timeframe = state.get("timeframe", "")
         created_at = state.get("created_at", "")
         status = state.get("status", "")
+
+        # Skip failed/stuck workflows
+        if status in EXCLUDED_STATUSES:
+            continue
         score = state.get("composite_score", 0) or 0
         go_live = _as_dict(state.get("go_live"))
         go_live_ready = go_live.get("go_live_ready") if go_live else None
 
         metrics = _best_workflow_metrics(state)
+        notes = _generate_notes(state)
         workflows.append(
             {
                 "workflow_id": workflow_id,
@@ -84,7 +199,9 @@ def generate_boards(
                 "symbol": symbol,
                 "timeframe": timeframe,
                 "created_at": created_at,
+                "created_at_fmt": _format_date(created_at),
                 "status": status,
+                "notes": notes,
                 "score_num": float(score or 0),
                 "profit_num": float(metrics.get("profit") or 0),
                 "pf_num": float(metrics.get("profit_factor") or 0),
