@@ -166,6 +166,7 @@ def _score_for_backtest(pass_result: dict[str, Any]) -> float:
 def extract_top_passes(state: dict[str, Any], state_file: Path, top_n: int = 20) -> list[dict[str, Any]]:
     steps = state.get("steps") if isinstance(state.get("steps"), dict) else {}
 
+    # Priority 1: Backtest results (most accurate - actual backtests on selected passes)
     bt_step = steps.get("9_backtest_robust") if isinstance(steps, dict) else None
     bt_result = bt_step.get("result") if isinstance(bt_step, dict) else None
     backtests: list[dict[str, Any]] = []
@@ -177,6 +178,14 @@ def extract_top_passes(state: dict[str, Any], state_file: Path, top_n: int = 20)
     if backtests:
         return _extract_from_backtests(state, state_file, backtests, top_n)
 
+    # Priority 2: optimization_results.top_20 (direct optimization results storage)
+    opt_results_direct = state.get("optimization_results")
+    if isinstance(opt_results_direct, dict):
+        top_20 = opt_results_direct.get("top_20", [])
+        if isinstance(top_20, list) and top_20:
+            return _extract_from_optimization(state, state_file, top_20, top_n)
+
+    # Priority 3: steps.7_run_optimization (workflow runner storage)
     opt_step = steps.get("7_run_optimization") if isinstance(steps, dict) else None
     opt_result = opt_step.get("result") if isinstance(opt_step, dict) else None
     opt_results: list[dict[str, Any]] = []
