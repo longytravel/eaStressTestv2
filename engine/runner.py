@@ -486,10 +486,7 @@ class WorkflowRunner:
 
     def _continue_automated(self, stop_on_failure: bool = True) -> dict:
         """
-        DEPRECATED: Do not use automated param analysis.
-
-        Parameter analysis MUST be done by Claude via /param-analyzer skill.
-        This method exists only for backwards compatibility and will error.
+        DEPRECATED: Parameter analysis must be done by Claude via /param-analyzer skill.
         """
         raise NotImplementedError(
             "Automated parameter analysis is disabled. "

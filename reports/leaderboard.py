@@ -42,10 +42,18 @@ def generate_leaderboard(
     all_passes: list[dict[str, Any]] = []
     workflows_processed = 0
 
+    # Statuses to exclude from leaderboard (stuck/failed workflows)
+    EXCLUDED_STATUSES = {'failed', 'awaiting_param_analysis', 'awaiting_stats_analysis', 'awaiting_ea_fix', 'pending'}
+
     for state_file in sorted(runs_path.glob("workflow_*.json")):
         try:
             state = json.loads(state_file.read_text(encoding="utf-8"))
         except Exception:
+            continue
+
+        # Skip failed/stuck workflows
+        status = state.get("status", "")
+        if status in EXCLUDED_STATUSES:
             continue
 
         passes = extract_top_passes(state, state_file, top_n=passes_per_workflow)

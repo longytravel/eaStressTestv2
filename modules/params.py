@@ -147,13 +147,9 @@ def format_params_table(params: list[dict]) -> str:
 # PARAMETER ANALYSIS IS DONE BY CLAUDE
 # =============================================================================
 #
-# The Python heuristic functions have been REMOVED.
 # Parameter analysis MUST be done by Claude via /param-analyzer skill.
-#
 # Claude reads the EA source code, understands each parameter's purpose,
-# and generates:
-#   1. wide_validation_params - to maximize trades for validation
-#   2. optimization_ranges - intelligent ranges for optimization
+# and generates intelligent ranges that heuristics cannot match.
 #
 # This is invoked via: runner.continue_with_params(wide_params, opt_ranges)
 # =============================================================================
