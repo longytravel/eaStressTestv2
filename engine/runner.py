@@ -381,17 +381,293 @@ class WorkflowRunner:
         if self.on_step_complete:
             self.on_step_complete(step_name, passed, result)
 
-    def run(self, stop_on_failure: bool = True, pause_for_analysis: bool = True) -> dict:
+    # =========================================================================
+    # STEP VALIDATION & PROTECTION
+    # =========================================================================
+
+    def _validate_step_prerequisites(self, required_steps: list[str]) -> tuple[bool, str]:
+        """
+        Validate that all required steps have passed before proceeding.
+
+        Args:
+            required_steps: List of step names that must have passed
+
+        Returns:
+            (valid, error_message) - True if all prerequisites met, else False with reason
+        """
+        steps = self.state.state.get('steps', {})
+
+        for step_name in required_steps:
+            step_data = steps.get(step_name, {})
+            status = step_data.get('status')
+
+            if status is None:
+                return False, f"Prerequisite step '{step_name}' has not been run"
+            if status != 'passed':
+                return False, f"Prerequisite step '{step_name}' did not pass (status: {status})"
+
+        return True, ""
+
+    def _validate_param_submission(
+        self,
+        wide_validation_params: dict,
+        optimization_ranges: list[dict],
+    ) -> list[str]:
+        """
+        Validate that submitted params are well-formed before accepting them.
+
+        This helps catch cases where /param-analyzer was skipped or produced
+        incomplete output.
+
+        Args:
+            wide_validation_params: Dict of {param_name: value} for validation
+            optimization_ranges: List of param dicts with optimization settings
+
+        Returns:
+            List of error messages (empty if valid)
+        """
+        errors = []
+
+        # 1. wide_validation_params must be a non-empty dict
+        if not isinstance(wide_validation_params, dict):
+            errors.append("wide_validation_params must be a dict")
+        elif len(wide_validation_params) == 0:
+            errors.append("wide_validation_params is empty - did you run /param-analyzer?")
+
+        # 2. optimization_ranges must be a non-empty list
+        if not isinstance(optimization_ranges, list):
+            errors.append("optimization_ranges must be a list")
+        elif len(optimization_ranges) == 0:
+            errors.append("optimization_ranges is empty - did you run /param-analyzer?")
+        else:
+            # 3. Each range must have required keys
+            for i, r in enumerate(optimization_ranges):
+                if not isinstance(r, dict):
+                    errors.append(f"optimization_ranges[{i}] is not a dict")
+                    continue
+
+                if 'name' not in r:
+                    errors.append(f"optimization_ranges[{i}] missing 'name' key")
+                    continue
+
+                name = r['name']
+                if 'optimize' not in r:
+                    errors.append(f"Parameter '{name}' missing 'optimize' key (True/False)")
+                    continue
+
+                # 4. If optimize=True, requires start/step/stop
+                if r.get('optimize') is True:
+                    for key in ('start', 'step', 'stop'):
+                        if key not in r:
+                            errors.append(f"Parameter '{name}' has optimize=True but missing '{key}'")
+
+            # 5. Check for unknown param names (typos) if we have extracted params
+            if self.params:
+                known_names = {p.get('name') for p in self.params if isinstance(p, dict)}
+                range_names = {r.get('name') for r in optimization_ranges if isinstance(r, dict)}
+
+                # Check for names in ranges that don't exist in extracted params
+                unknown = range_names - known_names
+                # Exclude injected safety params from unknown check
+                unknown = {n for n in unknown if not n.startswith('EAStressSafety_')}
+                if unknown:
+                    errors.append(f"Unknown parameter names in optimization_ranges: {unknown}")
+
+                # Check for names in wide_params that don't exist in extracted params
+                wide_names = set(wide_validation_params.keys())
+                unknown_wide = wide_names - known_names
+                # Exclude injected safety params
+                unknown_wide = {n for n in unknown_wide if not n.startswith('EAStressSafety_')}
+                if unknown_wide:
+                    errors.append(f"Unknown parameter names in wide_validation_params: {unknown_wide}")
+
+        return errors
+
+    def _is_step_completed(self, step_name: str) -> bool:
+        """Check if a step has already been completed (passed or failed)."""
+        steps = self.state.state.get('steps', {})
+        step_data = steps.get(step_name, {})
+        return step_data.get('status') in ('passed', 'failed')
+
+    def _check_rerun_allowed(self, step_name: str, force: bool = False) -> tuple[bool, str]:
+        """
+        Check if running a step is allowed (not already completed unless forced).
+
+        Args:
+            step_name: Step to check
+            force: If True, allow re-running completed steps
+
+        Returns:
+            (allowed, warning_message)
+        """
+        if not self._is_step_completed(step_name):
+            return True, ""
+
+        if force:
+            return True, f"Re-running already completed step '{step_name}' (forced)"
+
+        return False, f"Step '{step_name}' already completed. Use force=True to re-run."
+
+    # =========================================================================
+    # PARAMETER REVIEW FORMATTING
+    # =========================================================================
+
+    @staticmethod
+    def format_param_review(
+        wide_validation_params: dict,
+        optimization_ranges: list[dict],
+    ) -> dict:
+        """
+        Format parameters for human review before optimization.
+
+        Returns a dict with:
+        - optimizing: list of params being optimized with their ranges
+        - fixed: list of params with fixed values
+        - toggles: count of boolean toggles
+        - continuous: count of continuous params
+        - estimated_combinations: rough estimate of total combinations
+        - summary_text: formatted text for display
+        """
+        optimizing = []
+        fixed = []
+        toggle_count = 0
+        continuous_count = 0
+        combination_multiplier = 1
+
+        for param in optimization_ranges:
+            if not isinstance(param, dict):
+                continue
+
+            name = param.get('name', 'unknown')
+            optimize = param.get('optimize', False)
+            category = param.get('category', '')
+            rationale = param.get('rationale', '')
+
+            if optimize:
+                if 'start' in param and 'stop' in param:
+                    # Continuous parameter
+                    start = param.get('start', 0)
+                    stop = param.get('stop', 0)
+                    step = param.get('step', 1) or 1
+
+                    if step > 0 and stop >= start:
+                        num_values = int((stop - start) / step) + 1
+                    else:
+                        num_values = 1
+
+                    continuous_count += 1
+                    combination_multiplier *= num_values
+
+                    optimizing.append({
+                        'name': name,
+                        'type': 'continuous',
+                        'start': start,
+                        'step': step,
+                        'stop': stop,
+                        'values': num_values,
+                        'category': category,
+                        'rationale': rationale,
+                    })
+                else:
+                    # Boolean toggle
+                    toggle_count += 1
+                    combination_multiplier *= 2
+
+                    optimizing.append({
+                        'name': name,
+                        'type': 'toggle',
+                        'start': 'false',
+                        'step': '-',
+                        'stop': 'true',
+                        'values': 2,
+                        'category': category,
+                        'rationale': rationale,
+                    })
+            else:
+                # Fixed parameter
+                fixed_value = param.get('fixed_value', param.get('default', param.get('start', 'N/A')))
+                fixed.append({
+                    'name': name,
+                    'value': fixed_value,
+                    'category': category,
+                    'rationale': rationale,
+                })
+
+        # Build summary text
+        lines = []
+        lines.append("=" * 72)
+        lines.append("PARAMETER REVIEW")
+        lines.append("=" * 72)
+        lines.append("")
+        lines.append(f"OPTIMIZING ({len(optimizing)} params):")
+        lines.append("-" * 72)
+        lines.append(f"{'Name':<30} {'Start':>8} {'Step':>8} {'Stop':>8} {'Values':>6} {'Category':<12}")
+        lines.append("-" * 72)
+
+        for p in optimizing:
+            start_str = str(p['start']) if p['type'] == 'continuous' else 'bool'
+            step_str = str(p['step']) if p['type'] == 'continuous' else '-'
+            stop_str = str(p['stop']) if p['type'] == 'continuous' else '-'
+            lines.append(f"{p['name']:<30} {start_str:>8} {step_str:>8} {stop_str:>8} {p['values']:>6} {p['category']:<12}")
+
+        lines.append("")
+        lines.append(f"FIXED ({len(fixed)} params):")
+        lines.append("-" * 72)
+        lines.append(f"{'Name':<30} {'Value':<15} {'Reason':<25}")
+        lines.append("-" * 72)
+
+        for p in fixed:
+            val_str = str(p['value'])[:15]
+            reason_str = (p['rationale'] or p['category'])[:25]
+            lines.append(f"{p['name']:<30} {val_str:<15} {reason_str:<25}")
+
+        lines.append("")
+        lines.append("=" * 72)
+        lines.append(f"Toggles: {toggle_count} (2^{toggle_count} = {2**toggle_count:,})")
+        lines.append(f"Continuous: {continuous_count}")
+        lines.append(f"ESTIMATED COMBINATIONS: {combination_multiplier:,}")
+        lines.append("=" * 72)
+
+        return {
+            'optimizing': optimizing,
+            'fixed': fixed,
+            'toggles': toggle_count,
+            'continuous': continuous_count,
+            'estimated_combinations': combination_multiplier,
+            'summary_text': '\n'.join(lines),
+        }
+
+    # =========================================================================
+    # WORKFLOW EXECUTION
+    # =========================================================================
+
+    def run(self, stop_on_failure: bool = True, pause_for_analysis: bool = True, force: bool = False) -> dict:
         """
         Run the complete workflow.
 
         Args:
             stop_on_failure: If True, stop at first failed gate
             pause_for_analysis: If True, pause after Step 3 for Claude to analyze params
+            force: If True, allow re-running even if workflow already started
 
         Returns:
             Final workflow state summary (or partial if paused)
+
+        Raises:
+            RuntimeError: If workflow already in progress/completed and force=False
         """
+        # =====================================================================
+        # RE-RUN PROTECTION: Check if workflow already started
+        # =====================================================================
+        current_status = self.state.state.get('status', 'pending')
+        if current_status not in ('pending',) and not force:
+            raise RuntimeError(
+                f"Workflow already has status '{current_status}'. "
+                f"Use force=True to restart, or use continue_with_params() to resume."
+            )
+        if force and current_status != 'pending':
+            self._log(f"Re-running workflow (was: {current_status}, forced)")
+
         self.state.set_status('in_progress')
 
         # Phase 1: Steps 1-3 (preparation)
@@ -437,7 +713,8 @@ class WorkflowRunner:
         self,
         wide_validation_params: dict,
         optimization_ranges: list[dict],
-        stop_on_failure: bool = True
+        stop_on_failure: bool = True,
+        force: bool = False,
     ) -> dict:
         """
         Continue workflow from Step 4 with Claude-analyzed parameters.
@@ -451,12 +728,52 @@ class WorkflowRunner:
             wide_validation_params: Dict of {param_name: value} for validation backtest
             optimization_ranges: List of param dicts with start/step/stop for optimization
             stop_on_failure: If True, stop at first failed gate
+            force: If True, allow re-running even if Step 4 already completed
 
         Returns:
             Final workflow state summary
+
+        Raises:
+            ValueError: If prerequisite steps (1-3) have not passed
+            RuntimeError: If Step 4 already completed and force=False
         """
         # Restore paths from previous steps if continuing from loaded state
         self._restore_paths_from_state()
+
+        # =====================================================================
+        # PREREQUISITE VALIDATION: Steps 1-3 must have passed
+        # =====================================================================
+        required_steps = [
+            '1_load_ea',
+            '1b_inject_ontester',
+            '1c_inject_safety',
+            '2_compile',
+            '3_extract_params',
+        ]
+        valid, error_msg = self._validate_step_prerequisites(required_steps)
+        if not valid:
+            raise ValueError(f"Cannot continue: {error_msg}")
+
+        # =====================================================================
+        # RE-RUN PROTECTION: Check if Step 4 already completed
+        # =====================================================================
+        allowed, warning = self._check_rerun_allowed('4_analyze_params', force=force)
+        if not allowed:
+            raise RuntimeError(warning)
+        if warning:
+            self._log(warning)
+
+        # =====================================================================
+        # PARAM VALIDATION: Ensure params are well-formed
+        # =====================================================================
+        validation_errors = self._validate_param_submission(
+            wide_validation_params, optimization_ranges
+        )
+        if validation_errors:
+            error_list = '\n  - '.join(validation_errors)
+            raise ValueError(
+                f"Invalid parameter submission (did you run /param-analyzer?):\n  - {error_list}"
+            )
 
         # Ensure injected safety params exist and are treated correctly
         wide_validation_params, optimization_ranges = self._apply_injected_safety_defaults(

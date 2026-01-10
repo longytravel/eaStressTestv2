@@ -1,8 +1,257 @@
+---
+name: stress-test
+description: Run comprehensive stress tests on MetaTrader 5 Expert Advisors. Interactive workflow guide through 14 steps including compilation, parameter analysis, optimization, backtesting, and Monte Carlo simulation. Use when user wants to test an EA, run stress tests, or says /stress-test.
+---
+
 # /stress-test - EA Stress Test Orchestrator
 
-Run comprehensive stress tests on MetaTrader 5 Expert Advisors.
+## MANDATORY WORKFLOW STEPS (DO NOT SKIP)
 
-## Usage
+| Trigger | Claude Action | Verification |
+|---------|---------------|--------------|
+| Step 3 completes | INVOKE `/param-analyzer` | Skill produces `wide_params` + `opt_ranges` |
+| After /param-analyzer | SHOW parameter review | Use `format_param_review()` helper |
+| After showing review | ASK user confirmation | Wait for explicit YES |
+| User confirms | CALL `continue_with_params()` | Runner validates params |
+| Step 5 fails | INVOKE `/mql5-fixer` | Max 3 attempts |
+| Step 8 completes | INVOKE `/stats-analyzer` | Unless `AUTO_STATS_ANALYSIS=True` |
+| Workflow ends | PRESENT results | Show go-live score + dashboard path |
+
+---
+
+## TODOWRITE: Create These Todos When Skill Starts
+
+When `/stress-test` is invoked, **immediately create these todos**:
+
+```
+1. [in_progress] Run Phase 1 (Steps 1-3)
+2. [pending] Invoke /param-analyzer skill
+3. [pending] Show parameter review to user
+4. [pending] Get user confirmation on params
+5. [pending] Call continue_with_params()
+6. [pending] Handle Step 5 result (pass or fix)
+7. [pending] Invoke /stats-analyzer OR confirm auto-select
+8. [pending] Present results with go-live score
+```
+
+Mark each as `completed` when done. Mark as `in_progress` when starting.
+
+---
+
+## WORKFLOW FLOW
+
+### Phase 1: Discovery & Execution (Steps 1-3)
+
+```python
+from engine.runner import WorkflowRunner
+from engine.terminals import TerminalRegistry
+
+# Discover available EAs
+registry = TerminalRegistry()
+eas = registry.find_eas()
+
+# Run workflow - PAUSES after Step 3
+runner = WorkflowRunner(ea_path, terminal_name, symbol='EURUSD', timeframe='H1')
+result = runner.run()  # Returns status='awaiting_param_analysis'
+```
+
+**Mark todo "Run Phase 1" as completed.**
+
+---
+
+### STOP 1: Before Parameter Analysis
+
+```
+STOP: Phase 1 complete. Before continuing:
+[ ] Status is 'awaiting_param_analysis'
+[ ] Parameters were extracted (check result)
+
+Now INVOKE /param-analyzer skill.
+```
+
+---
+
+### Phase 2: Parameter Analysis (Step 4)
+
+**Mark todo "Invoke /param-analyzer" as in_progress.**
+
+INVOKE the `/param-analyzer` skill. It will:
+1. Read the EA source code
+2. Analyze each parameter's purpose
+3. Generate `wide_params` (maximize trades)
+4. Generate `opt_ranges` (optimization ranges)
+
+**Mark todo "Invoke /param-analyzer" as completed.**
+
+---
+
+### STOP 2: Before continue_with_params()
+
+```
+STOP: Verify before proceeding:
+[ ] /param-analyzer was invoked (not skipped)
+[ ] format_param_review() output shown to user
+[ ] User explicitly confirmed "yes" or "proceed"
+
+DO NOT call continue_with_params() until ALL checked.
+```
+
+**Show parameter review:**
+
+```python
+review = WorkflowRunner.format_param_review(wide_params, opt_ranges)
+print(review['summary_text'])
+```
+
+**Mark todo "Show parameter review" as completed.**
+
+**Ask user:**
+```
+Do you want to proceed with these parameters?
+[Confirm] [Edit Ranges] [Cancel]
+```
+
+**Mark todo "Get user confirmation" as completed** only after explicit YES.
+
+**Continue workflow:**
+
+```python
+result = runner.continue_with_params(wide_params, opt_ranges)
+```
+
+**Mark todo "Call continue_with_params()" as completed.**
+
+---
+
+### Phase 3: Validation (Step 5)
+
+If Step 5 passes (50+ trades): Continue to Phase 4.
+
+If Step 5 fails (< 50 trades):
+1. Status becomes `awaiting_ea_fix`
+2. INVOKE `/mql5-fixer` skill
+3. After fix: `runner.restart_after_fix()`
+4. Max 3 attempts
+
+**Mark todo "Handle Step 5 result" as completed.**
+
+---
+
+### STOP 3: Before Stats Analysis (After Step 8)
+
+```
+STOP: Verify before proceeding:
+[ ] Optimization completed (Step 8)
+[ ] Either:
+    - /stats-analyzer invoked, OR
+    - AUTO_STATS_ANALYSIS=True in settings
+
+DO NOT call continue_with_analysis() until checked.
+```
+
+If `AUTO_STATS_ANALYSIS=True`: Runner auto-selects top 20 passes.
+
+Otherwise: INVOKE `/stats-analyzer` skill to select passes.
+
+**Mark todo "Invoke /stats-analyzer OR confirm auto-select" as completed.**
+
+---
+
+### Phase 4: Results Presentation (After Step 11)
+
+```python
+from engine.gates import check_go_live_ready, calculate_composite_score
+
+state_dict = runner.state.to_dict()
+go_live = check_go_live_ready(state_dict)
+score = calculate_composite_score(state_dict.get('metrics', {}))
+```
+
+**Present to user:**
+- Go-live score: X/10
+- PASS/FAIL verdict
+- Gate results with checkmarks
+- Dashboard path
+- Next steps (improve, retest, compare)
+
+**Mark todo "Present results with go-live score" as completed.**
+
+---
+
+### STOP 4: Before Ending Session
+
+```
+STOP: Verify before ending:
+[ ] Go-live score calculated and shown
+[ ] Dashboard path provided
+[ ] Next steps offered (improve, retest, compare)
+
+DO NOT end workflow presentation without ALL checked.
+```
+
+---
+
+## CHECKLIST TEMPLATE
+
+Copy this for each run:
+
+```markdown
+## Stress Test: [EA_NAME] | [SYMBOL] | [DATE]
+
+### Phase 1: Preparation
+- [ ] Steps 1-3 complete, status=awaiting_param_analysis
+
+### Phase 2: Params (CLAUDE MUST DO)
+- [ ] /param-analyzer invoked
+- [ ] Wide params: ___ values
+- [ ] Opt ranges: ___ optimizing, ___ fixed
+- [ ] User shown review table
+- [ ] User confirmed: ___
+- [ ] continue_with_params() called
+
+### Phase 3: Validation
+- [ ] Step 5: ___ trades (need 50)
+- [ ] If failed: /mql5-fixer attempt ___/3
+
+### Phase 4: Optimization (CLAUDE MUST DO)
+- [ ] Step 8: ___ passes found
+- [ ] /stats-analyzer invoked OR auto-select: ___
+- [ ] Top 20 selected
+
+### Phase 5: Results (CLAUDE MUST DO)
+- [ ] Go-live score: ___/10
+- [ ] Dashboard shown: ___
+- [ ] Next steps offered: ___
+```
+
+---
+
+## REFERENCE: Step Details
+
+### Step Overview
+
+| Step | Name | Gate | Notes |
+|------|------|------|-------|
+| 1 | Load EA | File exists | |
+| 1B | Inject OnTester | Compiles | |
+| 1C | Inject Safety | Compiles | |
+| 2 | Compile | No errors | If fails: /mql5-fixer |
+| 3 | Extract Params | Params found | PAUSE for Step 4 |
+| 4 | Analyze Params | Ranges valid | Claude /param-analyzer |
+| 4B | Parameter Review | User confirms | Show all params, get confirmation |
+| 5 | Validate Trades | Trades >= 50 | If fails: Step 5B |
+| 5B | Fix EA | Trades >= 50 | Claude /mql5-fixer (max 3 attempts) |
+| 6 | Create INI | INI valid | |
+| 7 | Run Optimization | Passes > 0 | |
+| 8 | Parse Results | Robust params found | |
+| 9 | Backtest Robust | PF >= 1.5, DD <= 30% | |
+| 10 | Monte Carlo | Ruin <= 5%, Conf >= 70% | |
+| 11 | Generate Reports | Dashboard opens | |
+| 12 | Stress Scenarios | Optional | Spread/latency + tick validation |
+| 13 | Forward Windows | Optional | Time-sliced performance windows |
+| 14 | Multi-Pair Runs | Optional | Re-run per symbol |
+
+### Usage
 
 ```
 /stress-test                    # Interactive - discover and select EA
@@ -10,159 +259,27 @@ Run comprehensive stress tests on MetaTrader 5 Expert Advisors.
 /stress-test --batch            # Run in autonomous batch mode
 ```
 
-## What This Does
-
-Executes an 11-step stress testing workflow (plus optional post-step stress scenarios):
-
-| Step | Name | Gate | Notes |
-|------|------|------|-------|
-| 1 | Load EA | File exists | |
-| 1B | Inject OnTester | Compiles | |
-| 1C | Inject Safety | Compiles | |
-| 2 | Compile | No errors | If fails → /mql5-fixer |
-| 3 | Extract Params | Params found | PAUSE for Step 4 |
-| 4 | Analyze Params | Ranges valid | Claude /param-analyzer |
-| 5 | Validate Trades | Trades >= 50 | If fails → Step 5B |
-| **5B** | **Fix EA** | **Trades >= 50** | **Claude /mql5-fixer (max 3 attempts)** |
-| 6 | Create INI | INI valid | |
-| 7 | Run Optimization | Passes > 0 | |
-| 8 | Parse Results | Robust params found | |
-| 9 | Backtest Robust | PF >= 1.5, DD <= 30% | |
-| 10 | Monte Carlo | Ruin <= 5%, Conf >= 70% | |
-| 11 | Generate Reports | Dashboard opens | |
-| 12 | Stress Scenarios (Optional) | N/A | Spread/latency scenarios + 30d tick validation |
-| 13 | Forward Windows (Optional) | N/A | Time-sliced performance windows (in-sample/forward + recent windows) |
-| 14 | Multi-Pair Runs (Optional) | N/A | Re-run full workflow per symbol (optimized per pair) |
-
-## Interactive Flow
-
-1. **Discover** - List available EAs and recent test runs
-2. **Configure** - Select terminal, confirm settings
-3. **Execute** - Run workflow with progress updates
-4. **Review** - Show results, diagnose failures
-5. **Improve** - Offer next steps (retest, improve, etc.)
-
-## Instructions
-
-When invoked, follow the orchestrator agent behavior defined in `.claude/agents/stress-tester.md`.
-
-### Step 1: Discovery Phase
-
-First, discover available resources:
+### Discovery Phase
 
 ```python
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path.cwd()))
-
 from engine.terminals import TerminalRegistry
 from engine.state import StateManager
 
-# Get terminals
 registry = TerminalRegistry()
 terminals = registry.list_terminals()
-
-# Get available EAs
 eas = registry.find_eas()
-
-# Get recent workflows
 recent = StateManager.list_workflows()
 ```
 
-Present findings to user:
-- List terminals with status (ready/not found)
-- List EAs sorted by modification date
-- Show recent test results (passed/failed, score)
-
-### Step 2: Configuration
+### Configuration
 
 After user selects EA:
-1. Validate the terminal is accessible
+1. Validate terminal is accessible
 2. Confirm symbol/timeframe (default: EURUSD H1)
 3. Show backtest period (dynamic: today - 4 years)
-4. Get user confirmation before proceeding
+4. Get user confirmation
 
-### Step 3: Workflow Execution (Phase 1)
-
-Run the workflow which PAUSES after Step 3 for Claude analysis:
-
-```python
-from engine.runner import WorkflowRunner
-
-def progress_callback(message):
-    print(f"  {message}")
-
-runner = WorkflowRunner(
-    ea_path=selected_ea_path,
-    terminal_name=selected_terminal,
-    symbol='EURUSD',
-    timeframe='H1',
-    on_progress=progress_callback,
-)
-
-# This runs Steps 1-3 then PAUSES for Claude to analyze params
-result = runner.run()  # Returns with status='awaiting_param_analysis'
-```
-
-### Step 4: Invoke /param-analyzer Skill (REQUIRED)
-
-After Phase 1 completes, Claude MUST invoke the `/param-analyzer` skill:
-
-```
->>> STEP 4: PARAMETER ANALYSIS
->>> Invoking /param-analyzer skill...
-```
-
-**INVOKE THE SKILL:**
-```python
-# Claude invokes /param-analyzer which:
-# 1. Reads the EA source code
-# 2. Analyzes each parameter's purpose
-# 3. Generates WIDE validation params (maximize trades)
-# 4. Generates OPTIMIZATION ranges (intelligent ranges)
-```
-
-The skill outputs TWO things:
-
-**1. WIDE Validation Params** (for Step 5):
-```python
-wide_params = {
-    "SessionStartHour": 0,      # Extended hours
-    "SessionEndHour": 23,
-    "MinATRPips": 0,            # Widened filters
-    "MaxATRPips": 5000,
-    "MaxSpreadPips": 500,
-    # ... all filters loosened to maximize trades
-}
-```
-
-**2. Optimization Ranges** (for Step 7):
-```python
-opt_ranges = [
-    {"name": "StopLoss", "start": 30, "step": 10, "stop": 100, "optimize": True,
-     "category": "risk", "rationale": "SL: 30-100 points"},
-    {"name": "MagicNumber", "optimize": False,
-     "category": "identifier", "rationale": "Never optimize"},
-    # ... intelligent ranges for each param
-]
-```
-
-**Continue workflow with analyzed params:**
-```python
->>> Continuing with Claude-analyzed parameters...
->>> Wide params: 27 set | Optimization: 32 params
-result = runner.continue_with_params(wide_params, opt_ranges)
-```
-
-### Optional: Auto-select passes (no LLM)
-
-For unattended runs (batch / multi-pair), you can enable score-based auto selection:
-- `settings.AUTO_STATS_ANALYSIS=True`
-- `settings.AUTO_STATS_TOP_N=20`
-
-This uses the same composite score as the leaderboard to pick the top passes for Step 9.
-
-### Key Analysis Rules for Claude:
+### Parameter Analysis Rules
 
 **NEVER optimize:**
 - MagicNumber, ID, identifier params
@@ -179,85 +296,42 @@ This uses the same composite score as the leaderboard to pick the top passes for
 - Stop loss: 50-200% of default, step 10
 - Take profit: 50-300% of default, step 25
 - Periods: 50-200% of default
-- Thresholds: ±30% of default
-
-### Step 5: Validate Trades (Phase 2)
-
-After Claude provides params, workflow continues automatically:
-- Uses WIDE params for validation backtest
-- Should now get 50+ trades
-- If still fails → triggers Step 5B
+- Thresholds: +/-30% of default
 
 ### Step 5B: Fix EA (If Validation Fails)
 
-When Step 5 fails (< 50 trades), the workflow PAUSES with `status='awaiting_ea_fix'`.
+When Step 5 fails (< 50 trades), status becomes `awaiting_ea_fix`.
 
-**Claude MUST invoke `/mql5-fixer` skill to diagnose and fix the EA:**
-
-```
->>> STEP 5B: EA FIX REQUIRED
->>> Validation failed: 11 trades (need 50)
->>> Invoking /mql5-fixer skill to diagnose...
-```
-
-**The /mql5-fixer skill will:**
+The /mql5-fixer skill will:
 1. Read and analyze the EA source code
 2. Trace entry logic to find WHY it's not trading
 3. Identify hardcoded values, bugs, or overly strict conditions
-4. **ASK PERMISSION** before modifying the EA
+4. ASK PERMISSION before modifying the EA
 5. Backup original EA before changes
-6. Apply fix and restart workflow from Step 1
+6. Apply fix and restart workflow
 
-**After fix is applied:**
+After fix:
 ```python
-# Claude applies the fix using Edit tool, then:
 runner.restart_after_fix()
-
-# This:
-# - Clears old validation data
-# - Restarts from Step 1 (recompile)
-# - Re-extracts params (may have new ones)
-# - Invokes /param-analyzer again
-# - Runs validation with new WIDE params
 ```
 
-**Attempt tracking:**
-```python
-# State contains:
-state = {
-    "status": "awaiting_ea_fix",
-    "fix_attempts": 1,           # Current attempt (1-3)
-    "max_fix_attempts": 3,       # Maximum attempts
-    "validation_trades": 11,     # Trades from last validation
-}
-```
+After 3 failed attempts, offer options:
+1. Lower MIN_TRADES threshold
+2. Manual investigation
+3. Abandon test
 
-**After 3 failed attempts:**
-```markdown
-## EA Fix Failed After 3 Attempts
+### Auto-Select Passes (No LLM)
 
-### Options
-1. **Lower MIN_TRADES threshold** - Accept fewer trades
-2. **Manual investigation** - User reviews EA logic
-3. **Abandon test** - EA may not be suitable
+For unattended runs:
+- `settings.AUTO_STATS_ANALYSIS=True`
+- `settings.AUTO_STATS_TOP_N=20`
 
-Which would you like to do?
-```
+Uses composite score to pick top passes for Step 9.
 
-### Step 6+: Continue with Optimization
-
-Workflow proceeds with Claude's optimization ranges.
-
-### Step 5: Results Presentation
-
-After Step 11, present comprehensive results:
+### Results Presentation
 
 ```python
-from engine.gates import (
-    check_go_live_ready,
-    calculate_composite_score,
-    diagnose_failure,
-)
+from engine.gates import check_go_live_ready, calculate_composite_score, diagnose_failure
 
 state_dict = runner.state.to_dict()
 go_live = check_go_live_ready(state_dict)
@@ -272,69 +346,37 @@ if not go_live['go_live_ready']:
 
 Format output with:
 - Clear PASS/FAIL verdict
-- All gate results with ✅/❌
+- All gate results with checkmarks
 - Composite score out of 10
 - Edge summary (what works)
 - Weaknesses list
 - Dashboard path
 
-### Step 6: Next Actions
+### Next Actions
 
-Offer clear options:
-1. **Open dashboard** - Browser opens HTML report
-2. **Suggest improvements** - Invoke `/ea-improver`
-3. **Test another EA** - Return to discovery
-4. **Compare runs** - Show historical results
-5. **Run stress scenarios** - Optional Step 12 (spread/latency/tick validation)
-6. **Exit** - End session
+Offer options:
+1. Open dashboard - Browser opens HTML report
+2. Suggest improvements - Invoke /ea-improver
+3. Test another EA - Return to discovery
+4. Compare runs - Show historical results
+5. Run stress scenarios - Optional Step 12
+6. Exit - End session
 
-If `AUTO_RUN_STRESS_SCENARIOS=False` in `settings.py`, you can run Step 12 after a workflow completes:
+### Run Stress Scenarios Post-Hoc
 
 ```python
-from engine.runner import WorkflowRunner
 runner = WorkflowRunner.from_workflow_id(workflow_id)
 runner.run_stress_scenarios_only()
 ```
 
-## Integration with Other Skills
+### Integration with Other Skills
 
-### /param-analyzer
-Call after extracting parameters to get intelligent ranges:
-```
-The EA has these parameters. Let me analyze optimal ranges...
-[Invoke /param-analyzer with parameter list]
-```
+- `/param-analyzer` - After Step 3, generate params
+- `/mql5-fixer` - Step 2 compilation errors OR Step 5B validation failures
+- `/stats-analyzer` - After Step 8, select top passes
+- `/ea-improver` - After results, suggest improvements
 
-### /mql5-fixer
-Call if compilation fails (Step 2) OR validation fails (Step 5B):
-
-**For compilation errors:**
-```
-Compilation failed. Let me analyze the errors...
-[Invoke /mql5-fixer with error messages]
-```
-
-**For trade validation failures:**
-```
-Validation failed: 11 trades (need 50). Let me diagnose the EA...
-[Invoke /mql5-fixer to diagnose why EA isn't trading]
-```
-
-### /stats-analyzer
-Call in Step 11 to generate insights:
-```
-Generating performance insights from results...
-[Invoke /stats-analyzer with workflow state]
-```
-
-### /ea-improver
-Call when user wants improvement suggestions:
-```
-Analyzing weaknesses and suggesting fixes...
-[Invoke /ea-improver with stats report]
-```
-
-## Error Handling
+### Error Handling
 
 **Terminal not found:**
 ```
@@ -364,21 +406,16 @@ Value: [actual] (required: [threshold])
 
 Diagnosis: [Why this happened]
 Suggestion: [What to do about it]
-
-Options:
-1. Continue anyway (skip remaining steps)
-2. Adjust parameters and retry
-3. Abort test
 ```
 
-## Output Files
+### Output Files
 
 Successful runs create:
 - `runs/workflow_{ea}_{timestamp}.json` - Full state
 - `runs/dashboards/{ea}_{timestamp}/index.html` - Dashboard
 - `runs/dashboards/{ea}_{timestamp}/data.json` - Chart data
 
-## Settings Reference
+### Settings Reference
 
 From `settings.py`:
 - `MIN_PROFIT_FACTOR = 1.5`
