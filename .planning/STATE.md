@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-01-11)
 
 **Core value:** Every workflow step must work correctly and reliably before adding anything new. Reliability first.
-**Current focus:** Phase 1 — Specification
+**Current focus:** Phase 2 — Core Domain
 
 ## Current Position
 
-Phase: 1 of 8 (Specification)
-Plan: 5 of 5 in current phase
-Status: Phase complete
-Last activity: 2026-01-11 — Completed 01-05-PLAN.md (Phase 1 complete)
+Phase: 2 of 8 (Core Domain)
+Plan: 0 of 1 in current phase
+Status: Planned, ready for execution
+Last activity: 2026-01-11 — Created 02-01-PLAN.md
 
 Progress: █████░░░░░ 25%
 
@@ -57,5 +57,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-01-11
-Stopped at: Completed 01-05-PLAN.md (Phase 1 complete)
-Resume file: None
+Stopped at: Created 02-01-PLAN.md (Phase 2 planned, ready for execution)
+Resume file: .planning/phases/02-core-domain/02-01-PLAN.md
