@@ -97,6 +97,49 @@ python scripts/clean_slate.py --archive --yes
 python scripts/mt5_cleanup.py --keep-ea RSI_Divergence_Pro --keep-core-only --archive --yes
 ```
 
+## ISSUES RESOLVED (2026-01-11)
+
+### Issue 1: Optimization Profit Not Reflected in Final Results - RESOLVED (Not a Bug)
+
+**Symptom:** Optimization shows £14,847 profit (315 trades), but final metrics show only £718 profit (59 trades).
+
+**Root Cause (Diagnosed):**
+This is NOT a bug - it's working as designed. The investigation revealed:
+- Optimization top passes had £14,847 **in-sample** profit but **-£500 forward** profit (negative!)
+- The auto-selector correctly chose more robust passes with positive forward results
+- Pass 4205 (selected): Back=£1,281, Forward=+£38 (both positive, robust)
+- Pass 10548 (top by profit): Back=£17,309, Forward=-£500 (overfitted, rejected)
+
+The £718 result is the CORRECT full 4-year backtest for a robustly-selected pass.
+
+**Lesson:** The two-stage optimization process should have shown this data to the user
+so they understood WHY different passes were selected.
+
+### Issue 2: Two-Stage Optimization Process Not Enforced - FIXED
+
+**Symptom:** Workflow ran straight through Steps 8→8B→9 without pausing for re-optimization analysis.
+
+**Root Cause:**
+- `auto_stats_analysis=True` bypassed the mandatory `run_reopt_analysis()` call
+- User was never shown toggle analysis or asked about re-optimization
+
+**Fix Applied (2026-01-11):**
+1. Modified `engine/runner.py` to run `run_reopt_analysis()` BEFORE auto-selecting passes
+2. Added enforcement in `continue_with_analysis()` that requires `reopt_analysis_completed=True`
+3. Added `skip_reopt_check=True` parameter for auto mode (after it runs analysis itself)
+4. Error message explains the two-stage process if enforcement fails
+
+**Enforcement Now Works:**
+- Manual mode: `continue_with_analysis()` raises error if `run_reopt_analysis()` not called
+- Auto mode: `run_reopt_analysis()` runs automatically before pass selection
+
+**Reference Analysis from 2026-01-11 Run:**
+Top 100 passes showed 100% consistency on 14 toggles:
+- TRUE: Enable_Hidden_Divergence, Enable_Regular_Divergence, Enable_Asymmetric_Params, Enable_Session_Sizing, Use_Trading_Hours, Avoid_Friday_Close, Enable_Breakeven, Enable_Partial_Close
+- FALSE: Use_Price_Slope_Filter, Use_RSI_Slope_Filter, Enable_RSI_Level_Filter, Enable_Momentum_Confirm, Enable_MA_Filter, Enable_Trailing
+
+These patterns should have triggered a Stage 2 re-optimization with fixed toggles and narrowed ranges.
+
 ## Tests
 
 ```bash

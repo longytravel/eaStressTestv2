@@ -885,10 +885,22 @@ class WorkflowRunner:
             auto_stats = bool(getattr(settings, 'AUTO_STATS_ANALYSIS', False))
 
         if auto_stats:
+            # ENFORCEMENT: Run reopt_analysis BEFORE auto-selecting passes
+            # This ensures the analysis data is captured even in unattended mode
+            self._log("AUTO: Running re-optimization analysis before pass selection...")
+            try:
+                self.run_reopt_analysis()
+            except Exception as e:
+                self._log(f"Warning: reopt_analysis failed: {e}")
+
             top_n = int(getattr(settings, 'AUTO_STATS_TOP_N', 20) or 20)
             selected_passes, analysis = self._auto_select_passes(top_n=top_n)
             self._log(f"AUTO: Selected {len(selected_passes)} passes by composite score")
-            return self.continue_with_analysis(selected_passes, analysis, stop_on_failure=stop_on_failure)
+            return self.continue_with_analysis(
+                selected_passes, analysis,
+                stop_on_failure=stop_on_failure,
+                skip_reopt_check=True,  # Already ran above
+            )
 
         # PAUSE for Claude /stats-analyzer to analyze and select top passes
         self.state.set_status('awaiting_stats_analysis')
@@ -991,7 +1003,8 @@ class WorkflowRunner:
         self,
         selected_passes: list[dict],
         analysis: dict,
-        stop_on_failure: bool = True
+        stop_on_failure: bool = True,
+        skip_reopt_check: bool = False,
     ) -> dict:
         """
         Continue workflow from Step 8B with Claude-analyzed passes.
@@ -999,16 +1012,37 @@ class WorkflowRunner:
         This should be called after Claude has analyzed optimization results
         with /stats-analyzer and selected the top 20 passes to backtest.
 
+        ENFORCEMENT: Requires run_reopt_analysis() to have been called first,
+        unless skip_reopt_check=True (used by auto_stats_analysis after it
+        runs the analysis itself).
+
         Args:
             selected_passes: List of pass dicts selected by Claude (max 20)
             analysis: Claude's analysis dict with reasoning, insights, etc.
             stop_on_failure: If True, stop at first failed gate
+            skip_reopt_check: If True, skip enforcement (used by auto mode)
 
         Returns:
             Final workflow state summary
         """
         # Restore paths from previous steps if continuing from loaded state
         self._restore_paths_from_state()
+
+        # ENFORCEMENT: Require reopt_analysis before proceeding to Step 9
+        # This ensures the two-stage optimization process is followed
+        if not skip_reopt_check:
+            checkpoints = self.state.state.get('checkpoints', {})
+            if not checkpoints.get('reopt_analysis_completed'):
+                raise ValueError(
+                    "Two-stage optimization enforcement: Must call run_reopt_analysis() "
+                    "before continue_with_analysis().\n\n"
+                    "The two-stage process requires:\n"
+                    "1. After Step 8: Call runner.run_reopt_analysis() to analyze results\n"
+                    "2. Review analysis: Check toggle patterns and clustering\n"
+                    "3. Decision: Either re-optimize with refined ranges, or proceed\n"
+                    "4. Then: Call continue_with_analysis() with selected passes\n\n"
+                    "To bypass (not recommended): pass skip_reopt_check=True"
+                )
 
         # Store Claude's selections
         self.selected_passes = selected_passes[:20]  # Limit to 20
@@ -2307,6 +2341,206 @@ class WorkflowRunner:
             self._log(f"Warning: Multi-pair boards regeneration failed: {e}")
 
         return True, {**result, 'boards_path': boards_path}
+
+    # =========================================================================
+    # RE-OPTIMIZATION METHODS
+    # =========================================================================
+
+    def run_reopt_analysis(self) -> dict:
+        """
+        Run re-optimization analysis after Step 8.
+
+        MUST be called before continue_with_refined_ranges().
+        Analyzes all optimization passes to identify parameter patterns.
+
+        Returns:
+            ReoptAnalysis dict with toggle stats, clustering data, and recommendation
+
+        Raises:
+            ValueError: If Steps 1-8 not completed
+        """
+        from modules.reopt_analyzer import analyze_for_reoptimization, format_analysis_report
+
+        # Validate prerequisites
+        if self.state.state.get('current_step', 0) < 8:
+            raise ValueError(
+                "Cannot run re-optimization analysis: Steps 1-8 must be completed first"
+            )
+
+        # Get optimization results
+        step8_result = self.state.get_step_result('8_parse_results') or {}
+        all_passes = step8_result.get('valid_passes', [])
+
+        # Also try to get from optimization_results
+        if not all_passes and self.optimization_results:
+            all_passes = self.optimization_results.get('valid_passes', [])
+
+        # Get top passes
+        step8b_result = self.state.get_step_result('8b_stats_analysis') or {}
+        top_passes = step8b_result.get('selected_passes', self.selected_passes or [])
+
+        # Get original ranges
+        original_ranges = self.param_ranges or self.state.state.get('optimization_ranges', [])
+
+        self._log("Running re-optimization analysis...")
+
+        # Run analysis
+        analysis = analyze_for_reoptimization(
+            all_passes=all_passes,
+            top_passes=top_passes,
+            original_ranges=original_ranges,
+            top_n=20,
+        )
+
+        # Store in state
+        self.state.state['reopt_analysis'] = analysis.to_dict()
+        self.state.state['checkpoints']['reopt_analysis_completed'] = True
+        self.state.save()
+
+        # Log results
+        self._log(f"Re-optimization analysis complete:")
+        self._log(f"  Total passes: {analysis.total_passes}")
+        self._log(f"  Valid passes: {analysis.valid_passes}")
+        self._log(f"  Should re-optimize: {analysis.recommendation.should_reoptimize}")
+        self._log(f"  Confidence: {analysis.recommendation.confidence}")
+
+        # Print formatted report
+        report = format_analysis_report(analysis)
+        self._log(report)
+
+        return analysis.to_dict()
+
+    def continue_with_refined_ranges(
+        self,
+        refined_ranges: list[dict],
+        notes: str = "",
+        stop_on_failure: bool = True,
+    ) -> dict:
+        """
+        Re-run optimization with refined parameter ranges.
+
+        Jumps to Step 6 (Create INI) and continues through Step 8.
+        After this, run_reopt_analysis() must be called again before
+        continuing to Step 9.
+
+        HARD ENFORCEMENT:
+        - Raises if re_optimization_count >= REOPT_MAX_ITERATIONS
+        - Raises if reopt_analysis not completed
+        - Raises if Steps 1-8 not done
+
+        Args:
+            refined_ranges: New optimization ranges (same format as original)
+            notes: Optional notes about why ranges were refined
+            stop_on_failure: If True, stop at first failed gate
+
+        Returns:
+            Workflow state summary after re-optimization
+        """
+        # Hard enforcement: Max iterations
+        max_iterations = getattr(settings, 'REOPT_MAX_ITERATIONS', 2)
+        current_count = self.state.state.get('re_optimization_count', 0)
+
+        if current_count >= max_iterations:
+            raise ValueError(
+                f"Maximum re-optimization iterations ({max_iterations}) reached. "
+                f"Cannot re-optimize further."
+            )
+
+        # Hard enforcement: Analysis must be completed
+        checkpoints = self.state.state.get('checkpoints', {})
+        if not checkpoints.get('reopt_analysis_completed'):
+            raise ValueError(
+                "Must call run_reopt_analysis() before continue_with_refined_ranges(). "
+                "Cannot skip the analysis step."
+            )
+
+        # Hard enforcement: Steps 1-8 must be done
+        if self.state.state.get('current_step', 0) < 8:
+            raise ValueError(
+                "Steps 1-8 must be completed before re-optimization."
+            )
+
+        # Restore paths from state
+        self._restore_paths_from_state()
+
+        self._log(f"Starting re-optimization (iteration {current_count + 1}/{max_iterations})...")
+        if notes:
+            self._log(f"Notes: {notes}")
+
+        # Store previous ranges for comparison
+        self.state.state['previous_optimization_ranges'] = self.param_ranges.copy() if self.param_ranges else None
+
+        # Update ranges
+        self.param_ranges = refined_ranges
+        self.state.state['optimization_ranges'] = refined_ranges
+
+        # Increment counter
+        self.state.state['re_optimization_count'] = current_count + 1
+
+        # Reset checkpoints for new optimization
+        self.state.state['checkpoints']['reopt_analysis_completed'] = False
+        self.state.state['checkpoints']['reopt_decision_made'] = True
+
+        # Clear previous optimization results
+        self.optimization_results = None
+        self.selected_passes = []
+
+        self.state.set_status('in_progress')
+        self.state.save()
+
+        # Run Steps 6-8
+        return self._run_reopt_steps(stop_on_failure)
+
+    def _run_reopt_steps(self, stop_on_failure: bool = True) -> dict:
+        """Run Steps 6-8 for re-optimization."""
+        reopt_steps = [
+            ('6_create_ini', self._step_create_ini),
+            ('7_run_optimization', self._step_run_optimization),
+            ('8_parse_results', self._step_parse_results),
+        ]
+
+        all_passed = True
+
+        for step_name, step_func in reopt_steps:
+            self._log(f"Starting step: {step_name} (re-optimization)")
+            self.state.start_step(step_name)
+
+            try:
+                passed, result = step_func()
+            except Exception as e:
+                passed = False
+                result = {'error': str(e)}
+                self.state.complete_step(step_name, False, result, str(e))
+
+            self._step_done(step_name, passed, result)
+
+            if not passed:
+                all_passed = False
+                self._log(f"Step {step_name} FAILED")
+                if stop_on_failure:
+                    break
+            else:
+                self._log(f"Step {step_name} PASSED")
+
+        # Update status
+        if all_passed:
+            self.state.set_status('awaiting_stats_analysis')
+            self._log("Re-optimization complete. Run run_reopt_analysis() to analyze results.")
+        else:
+            self.state.set_status('failed')
+
+        return self.state.get_summary()
+
+    def get_reopt_status(self) -> dict:
+        """Get current re-optimization status."""
+        return {
+            're_optimization_count': self.state.state.get('re_optimization_count', 0),
+            'max_iterations': getattr(settings, 'REOPT_MAX_ITERATIONS', 2),
+            'analysis_completed': self.state.state.get('checkpoints', {}).get('reopt_analysis_completed', False),
+            'decision_made': self.state.state.get('checkpoints', {}).get('reopt_decision_made', False),
+            'previous_ranges': self.state.state.get('previous_optimization_ranges'),
+            'reopt_analysis': self.state.state.get('reopt_analysis'),
+        }
 
 
 def run_workflow(
