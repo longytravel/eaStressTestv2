@@ -99,21 +99,34 @@ python scripts/mt5_cleanup.py --keep-ea RSI_Divergence_Pro --keep-core-only --ar
 
 ## ISSUES RESOLVED (2026-01-11)
 
-### Issue 1: Optimization Profit Not Reflected in Final Results - RESOLVED (Not a Bug)
+### Issue 1: Optimization Profit Not Reflected in Final Results - **BUG FOUND AND FIXED**
 
 **Symptom:** Optimization shows £14,847 profit (315 trades), but final metrics show only £718 profit (59 trades).
 
-**Root Cause (Diagnosed):**
-This is NOT a bug - it's working as designed. The investigation revealed:
-- Optimization top passes had £14,847 **in-sample** profit but **-£500 forward** profit (negative!)
-- The auto-selector correctly chose more robust passes with positive forward results
-- Pass 4205 (selected): Back=£1,281, Forward=+£38 (both positive, robust)
-- Pass 10548 (top by profit): Back=£17,309, Forward=-£500 (overfitted, rejected)
+**Root Cause (ACTUALLY A BUG):**
+The composite score calculation was missing 70% of the formula!
 
-The £718 result is the CORRECT full 4-year backtest for a robustly-selected pass.
+The `score_metrics` dict was only passing:
+- profit_factor (15% weight)
+- max_drawdown (15% weight)
 
-**Lesson:** The two-stage optimization process should have shown this data to the user
-so they understood WHY different passes were selected.
+But was MISSING:
+- **profit (25% weight)** - NOT passed!
+- **total_trades (20% weight)** - NOT passed!
+- **forward_result + back_result (25% weight)** - NOT passed!
+
+This caused Pass 1414 (£719, 59 trades) to be ranked higher than Pass 9525 (£1,626, 328 trades).
+
+**Correct Rankings (with full formula):**
+| Pass | OLD Score | NEW Score | Profit | Trades |
+|------|-----------|-----------|--------|--------|
+| 9525 | 2.30 | **5.1** | £1,626 | 328 | ← Should have been selected
+| 4205 | 2.90 | **4.6** | £1,659 | 107 |
+| 1414 | 3.10 | 3.6 | £719 | 59 | ← Was incorrectly selected
+
+**Fix Applied (2026-01-11):**
+- Fixed `_step_backtest_robust()` - now passes all required fields to `calculate_composite_score()`
+- Fixed `_auto_select_passes()` - same fix for auto mode
 
 ### Issue 2: Two-Stage Optimization Process Not Enforced - FIXED
 
