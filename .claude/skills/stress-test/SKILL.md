@@ -5,16 +5,36 @@ description: Run comprehensive stress tests on MetaTrader 5 Expert Advisors. Int
 
 # /stress-test - EA Stress Test Orchestrator
 
+## TWO-STAGE OPTIMIZATION FLOW
+
+The workflow uses a two-stage optimization approach:
+
+| Stage | Step | Purpose | Parameter Coverage |
+|-------|------|---------|-------------------|
+| **1. EXPLORE** | Steps 4-8 | Find what works | MAXIMUM - include all params |
+| **2. REFINE** | Step 8B-8C | Narrow based on evidence | Reduced via `reopt_analyzer` |
+
+**CRITICAL RULES:**
+- Stage 1 (`/param-analyzer`) must include ALL potentially relevant parameters
+- Do NOT reduce parameter ranges to hit arbitrary combination limits
+- Stage 2 refinement happens ONLY after seeing actual optimization results
+- The genetic optimizer is designed to handle large search spaces
+
+---
+
 ## MANDATORY WORKFLOW STEPS (DO NOT SKIP)
 
 | Trigger | Claude Action | Verification |
 |---------|---------------|--------------|
-| Step 3 completes | INVOKE `/param-analyzer` | Skill produces `wide_params` + `opt_ranges` |
+| Step 3 completes | INVOKE `/param-analyzer` | Skill produces `wide_params` + `opt_ranges` with FULL coverage |
 | After /param-analyzer | SHOW parameter review | Use `format_param_review()` helper |
 | After showing review | ASK user confirmation | Wait for explicit YES |
 | User confirms | CALL `continue_with_params()` | Runner validates params |
 | Step 5 fails | INVOKE `/mql5-fixer` | Max 3 attempts |
-| Step 8 completes | INVOKE `/stats-analyzer` | Unless `AUTO_STATS_ANALYSIS=True` |
+| Step 8 completes | CALL `run_reopt_analysis()` | Generate analysis data - THIS is where refinement decisions happen |
+| After reopt analysis | REVIEW + DECIDE | Re-optimize with refined ranges OR proceed |
+| If re-optimize | ASK user confirmation | Max 2 iterations |
+| After STOP 3B | INVOKE `/stats-analyzer` | Unless `AUTO_STATS_ANALYSIS=True` |
 | Workflow ends | PRESENT results | Show go-live score + dashboard path |
 
 ---
@@ -30,8 +50,10 @@ When `/stress-test` is invoked, **immediately create these todos**:
 4. [pending] Get user confirmation on params
 5. [pending] Call continue_with_params()
 6. [pending] Handle Step 5 result (pass or fix)
-7. [pending] Invoke /stats-analyzer OR confirm auto-select
-8. [pending] Present results with go-live score
+7. [pending] Run re-optimization analysis (STOP 3B)
+8. [pending] Review analysis and make decision
+9. [pending] Invoke /stats-analyzer OR confirm auto-select
+10. [pending] Present results with go-live score
 ```
 
 Mark each as `completed` when done. Mark as `in_progress` when starting.
@@ -137,11 +159,92 @@ If Step 5 fails (< 50 trades):
 
 ---
 
-### STOP 3: Before Stats Analysis (After Step 8)
+### STOP 3: Re-Optimization Analysis (After Step 8) - MANDATORY
+
+After Step 8 completes, Claude MUST run the re-optimization analysis:
+
+```python
+# REQUIRED - runner will refuse to continue without this
+analysis = runner.run_reopt_analysis()
+```
+
+**Mark todo "Run re-optimization analysis (STOP 3B)" as completed.**
+
+---
+
+### STOP 3B: Re-Optimization Decision (MANDATORY)
+
+Claude MUST review the analysis and make a decision:
+
+```python
+# Get analysis data
+from modules.reopt_analyzer import format_analysis_report
+reopt_analysis = runner.state.get('reopt_analysis', {})
+report = format_analysis_report(reopt_analysis)
+print(report)
+
+# Check iteration count
+reopt_status = runner.get_reopt_status()
+current_count = reopt_status['re_optimization_count']
+max_allowed = reopt_status['max_iterations']  # Usually 2
+```
+
+**Review checklist:**
+- [ ] Toggle analysis: Are any toggles >70% True or False in top passes?
+- [ ] Continuous clustering: Are any params tightly clustered (CV < 0.20)?
+- [ ] Soft recommendation: Does the auto-recommendation make sense?
+- [ ] Iteration count: How many re-optimizations already done? (max 2)
+
+**Decision matrix:**
+
+| Condition | Decision | Action |
+|-----------|----------|--------|
+| Strong patterns found + count < max | RE-OPTIMIZE | Ask user, then `continue_with_refined_ranges()` |
+| No strong patterns OR diversity good | PROCEED | `continue_with_analysis(selected_passes)` |
+| Max iterations reached | PROCEED | Must continue, cannot re-optimize |
+
+**If recommending RE-OPTIMIZE:**
+```
+Recommendation: RE-OPTIMIZE
+
+Patterns found:
+- Enable_MA_Filter: FALSE in 85% of top passes (vs 50% overall)
+- RSI_Period: Clusters at 14 (CV=0.15)
+- StopLoss_Points: Sweet spot at 450-600
+
+Suggested refined ranges:
+[show suggested_changes from analysis]
+
+Re-optimization iteration: 1 of 2
+
+Do you want to re-optimize with these refined ranges?
+[Confirm] [Skip and Proceed] [Edit Ranges]
+```
+
+**If user confirms re-optimization:**
+```python
+# Build refined ranges from analysis suggestions
+refined_ranges = build_refined_ranges(reopt_analysis)
+result = runner.continue_with_refined_ranges(refined_ranges, notes="Based on reopt analysis")
+# Returns to Step 6 (Create INI) -> 7 -> 8
+```
+
+**If PROCEED (no re-optimization):**
+```python
+# Continue to stats analysis and Step 9+
+pass  # Move to next section
+```
+
+**Mark todo "Review analysis and make decision" as completed.**
+
+---
+
+### STOP 3C: Before Stats Analysis
 
 ```
 STOP: Verify before proceeding:
-[ ] Optimization completed (Step 8)
+[ ] Re-optimization analysis was run (STOP 3)
+[ ] Decision was made at STOP 3B
 [ ] Either:
     - /stats-analyzer invoked, OR
     - AUTO_STATS_ANALYSIS=True in settings
@@ -201,10 +304,10 @@ Copy this for each run:
 ### Phase 1: Preparation
 - [ ] Steps 1-3 complete, status=awaiting_param_analysis
 
-### Phase 2: Params (CLAUDE MUST DO)
+### Phase 2: Params - Stage 1 EXPLORE (CLAUDE MUST DO)
 - [ ] /param-analyzer invoked
 - [ ] Wide params: ___ values
-- [ ] Opt ranges: ___ optimizing, ___ fixed
+- [ ] Opt ranges: ___ optimizing, ___ fixed (FULL coverage - no artificial limits)
 - [ ] User shown review table
 - [ ] User confirmed: ___
 - [ ] continue_with_params() called
@@ -212,6 +315,16 @@ Copy this for each run:
 ### Phase 3: Validation
 - [ ] Step 5: ___ trades (need 50)
 - [ ] If failed: /mql5-fixer attempt ___/3
+
+### Phase 3B: Stage 2 REFINE - Re-Optimization Decision (CLAUDE MUST DO)
+- [ ] run_reopt_analysis() called
+- [ ] Toggle analysis reviewed (which toggles won?)
+- [ ] Continuous clustering reviewed (which values concentrated?)
+- [ ] Soft recommendation reviewed
+- [ ] Decision made: REOPTIMIZE with refined ranges / PROCEED
+- [ ] If REOPTIMIZE: User confirmed modest step refinements
+- [ ] If REOPTIMIZE: continue_with_refined_ranges() called
+- [ ] Re-optimization iteration: ___/2
 
 ### Phase 4: Optimization (CLAUDE MUST DO)
 - [ ] Step 8: ___ passes found
@@ -243,7 +356,10 @@ Copy this for each run:
 | 5B | Fix EA | Trades >= 50 | Claude /mql5-fixer (max 3 attempts) |
 | 6 | Create INI | INI valid | |
 | 7 | Run Optimization | Passes > 0 | |
-| 8 | Parse Results | Robust params found | |
+| 8 | Parse Results | Robust params found | PAUSE for STOP 3/3B |
+| 8B | Reopt Analysis | Analysis generated | Claude runs run_reopt_analysis() |
+| 8C | Reopt Decision | User decides | Claude reviews, user confirms re-opt or proceed |
+| 8D | Stats Analysis | Top N selected | Claude /stats-analyzer OR auto |
 | 9 | Backtest Robust | PF >= 1.5, DD <= 30% | |
 | 10 | Monte Carlo | Ruin <= 5%, Conf >= 70% | |
 | 11 | Generate Reports | Dashboard opens | |
@@ -279,9 +395,9 @@ After user selects EA:
 3. Show backtest period (dynamic: today - 4 years)
 4. Get user confirmation
 
-### Parameter Analysis Rules
+### Parameter Analysis Rules (Stage 1 - EXPLORE)
 
-**NEVER optimize:**
+**NEVER optimize (truly irrelevant):**
 - MagicNumber, ID, identifier params
 - DebugMode, logging, display params
 - Safety guard params (EAStressSafety_*)
@@ -292,11 +408,15 @@ After user selects EA:
 - Spread limits: very high (100+)
 - Entry requirements: loosened to minimum
 
-**Optimization ranges:**
+**Optimization ranges - INCLUDE ALL RELEVANT PARAMS:**
 - Stop loss: 50-200% of default, step 10
 - Take profit: 50-300% of default, step 25
 - Periods: 50-200% of default
 - Thresholds: +/-30% of default
+- **ALL toggles:** Test both true AND false
+- **ALL filters:** Include in optimization
+
+**DO NOT limit combinations artificially.** The genetic optimizer handles large search spaces. Refinement happens in Stage 2 (reopt_analyzer) based on actual results.
 
 ### Step 5B: Fix EA (If Validation Fails)
 
