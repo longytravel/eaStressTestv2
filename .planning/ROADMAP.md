@@ -23,7 +23,7 @@ None (internal Python project, no external domain skills needed)
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
 - [x] **Phase 1: Specification** - Document all APIs, step contracts, skill expectations
-- [ ] **Phase 2: Core Domain** - Build pure Python domain models (params, metrics, state)
+- [x] **Phase 2: Core Domain** - Build pure Python domain models (params, metrics, state)
 - [ ] **Phase 3: MT5 Abstraction** - Build MT5 interface with dry-run capability
 - [ ] **Phase 4: Stage Framework** - Create stage interface and implement first stages (1-5)
 - [ ] **Phase 5: Remaining Stages** - Complete stages 6-14
@@ -126,7 +126,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Specification | 5/5 | Complete | 2026-01-11 |
-| 2. Core Domain | 0/TBD | Not started | - |
+| 2. Core Domain | 1/1 | Complete | 2026-01-11 |
 | 3. MT5 Abstraction | 0/TBD | Not started | - |
 | 4. Stage Framework | 0/TBD | Not started | - |
 | 5. Remaining Stages | 0/TBD | Not started | - |
