@@ -953,21 +953,24 @@ class WorkflowRunner:
                 if trades < int(min_trades or 1):
                     continue
 
-                score_metrics = {
-                    'profit_factor': r.get('profit_factor', 0),
-                    'max_drawdown': r.get('max_drawdown_pct', 0),
-                    'sharpe_ratio': r.get('sharpe_ratio', 0),
-                    'sortino_ratio': r.get('sortino_ratio', 0),
-                    'calmar_ratio': r.get('calmar_ratio', 0),
-                    'recovery_factor': r.get('recovery_factor', 0),
-                    'expected_payoff': r.get('expected_payoff', 0),
-                    'win_rate': r.get('win_rate', 0),
-                    'param_stability': 0.5,
-                }
-                score = gates.calculate_composite_score(score_metrics)
-
+                # Get forward/back results for consistency scoring
                 forward = params.get('Forward Result', 0) or 0
                 back = params.get('Back Result', 0) or 0
+
+                # Build complete score_metrics with all fields calculate_composite_score expects
+                score_metrics = {
+                    'profit': r.get('profit', 0),
+                    'total_trades': trades,
+                    'profit_factor': r.get('profit_factor', 0),
+                    'max_drawdown_pct': r.get('max_drawdown_pct', 0),
+                    'forward_result': forward,
+                    'back_result': back,
+                    # Additional metrics
+                    'sharpe_ratio': r.get('sharpe_ratio', 0),
+                    'recovery_factor': r.get('recovery_factor', 0),
+                    'expected_payoff': r.get('expected_payoff', 0),
+                }
+                score = gates.calculate_composite_score(score_metrics)
                 if forward > 0 and back > 0:
                     score = min(10, score + 0.5)
 
@@ -1725,16 +1728,26 @@ class WorkflowRunner:
                     result['back_result'] = params.get('Back Result', 0)
 
                     # Compute leaderboard-aligned composite score for this pass
+                    # IMPORTANT: Must include all fields that calculate_composite_score expects:
+                    # - profit/total_profit (25% weight)
+                    # - total_trades (20% weight)
+                    # - forward_result + back_result for consistency (25% weight)
+                    # - profit_factor (15% weight)
+                    # - max_drawdown (15% weight)
                     score_metrics = {
+                        'profit': result.get('profit', 0),
+                        'total_trades': result.get('total_trades', 0),
                         'profit_factor': result.get('profit_factor', 0),
-                        'max_drawdown': result.get('max_drawdown_pct', 0),
+                        'max_drawdown_pct': result.get('max_drawdown_pct', 0),
+                        'forward_result': params.get('Forward Result', 0),
+                        'back_result': params.get('Back Result', 0),
+                        # Additional metrics (not used in score but good to have)
                         'sharpe_ratio': result.get('sharpe_ratio', 0),
                         'sortino_ratio': result.get('sortino_ratio', 0),
                         'calmar_ratio': result.get('calmar_ratio', 0),
                         'recovery_factor': result.get('recovery_factor', 0),
                         'expected_payoff': result.get('expected_payoff', 0),
                         'win_rate': result.get('win_rate', 0),
-                        'param_stability': 0.5,
                     }
                     score = gates.calculate_composite_score(score_metrics)
 
