@@ -125,7 +125,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Specification | 3/5 | In progress | - |
+| 1. Specification | 4/5 | In progress | - |
 | 2. Core Domain | 0/TBD | Not started | - |
 | 3. MT5 Abstraction | 0/TBD | Not started | - |
 | 4. Stage Framework | 0/TBD | Not started | - |
