@@ -5,10 +5,12 @@ Defines the Stage protocol, StageResult, and StageContext for implementing workf
 """
 
 from dataclasses import dataclass, field
-from typing import Any, TYPE_CHECKING
+from typing import Any, Protocol, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ea_stress.core.metrics import GateResult
+    from ea_stress.core.state import WorkflowState
+    from ea_stress.mt5.interface import MT5Interface
 
 
 @dataclass(frozen=True)
@@ -52,3 +54,35 @@ class StageResult:
             gate=gate,
             errors=tuple(data.get("errors", [])),
         )
+
+
+class Stage(Protocol):
+    """Protocol for workflow stages.
+
+    Each stage:
+    1. Has a name (step identifier like "1_load_ea")
+    2. Takes inputs via constructor or execute params
+    3. Returns StageResult with success/data/gate/errors
+    """
+
+    @property
+    def name(self) -> str:
+        """Step name as used in WORKFLOW_STEPS (e.g., '1_load_ea')."""
+        ...
+
+    def execute(
+        self,
+        state: "WorkflowState",
+        mt5: "MT5Interface | None" = None,
+    ) -> StageResult:
+        """Execute the stage.
+
+        Args:
+            state: Current workflow state (for reading prior step results)
+            mt5: MT5 interface for operations requiring MT5 (compile, backtest, optimize)
+                 Pass None for stages that don't need MT5.
+
+        Returns:
+            StageResult with success status, output data, and gate result
+        """
+        ...
