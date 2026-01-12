@@ -128,7 +128,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 1. Specification | 5/5 | Complete | 2026-01-11 |
 | 2. Core Domain | 1/1 | Complete | 2026-01-11 |
 | 3. MT5 Abstraction | 1/1 | Complete | 2026-01-12 |
-| 4. Stage Framework | 2/5 | In progress | - |
+| 4. Stage Framework | 3/5 | In progress | - |
 | 5. Remaining Stages | 0/TBD | Not started | - |
 | 6. Pipeline & Runner | 0/TBD | Not started | - |
 | 7. Compatibility Shim | 0/TBD | Not started | - |
