@@ -15,6 +15,8 @@ __all__ = [
     "InjectOnTesterStage",
     "InjectSafetyStage",
     "CompileStage",
+    "ExtractParamsStage",
+    "AnalyzeParamsStage",
 ]
 
 
@@ -32,4 +34,10 @@ def __getattr__(name: str):
     if name == "CompileStage":
         from ea_stress.stages.s02_compile import CompileStage
         return CompileStage
+    if name == "ExtractParamsStage":
+        from ea_stress.stages.s03_extract_params import ExtractParamsStage
+        return ExtractParamsStage
+    if name == "AnalyzeParamsStage":
+        from ea_stress.stages.s04_analyze_params import AnalyzeParamsStage
+        return AnalyzeParamsStage
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
