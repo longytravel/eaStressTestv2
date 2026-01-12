@@ -5,6 +5,7 @@ Defines the Stage protocol, StageResult, and StageContext for implementing workf
 """
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Protocol, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -86,3 +87,30 @@ class Stage(Protocol):
             StageResult with success status, output data, and gate result
         """
         ...
+
+
+@dataclass
+class StageContext:
+    """Context passed to stages with common dependencies.
+
+    Avoids passing many individual parameters to each stage.
+    Mutable so stages can update shared state if needed.
+
+    Attributes:
+        ea_path: Original EA source path.
+        symbol: Trading symbol (default: EURUSD).
+        timeframe: Chart timeframe (default: H1).
+        terminal_config: MT5 terminal config (for compile).
+        modified_ea_path: Path after injection (set by Stage 1B).
+        compiled_ea_path: Path after compile (set by Stage 2).
+        wide_validation_params: Params for trade validation (set by Stage 4).
+        optimization_ranges: Ranges for optimization (set by Stage 4).
+    """
+    ea_path: Path
+    symbol: str = "EURUSD"
+    timeframe: str = "H1"
+    terminal_config: dict[str, Any] | None = None
+    modified_ea_path: Path | None = None
+    compiled_ea_path: Path | None = None
+    wide_validation_params: dict[str, Any] | None = None
+    optimization_ranges: list[dict[str, Any]] | None = None
