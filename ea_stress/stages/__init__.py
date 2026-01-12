@@ -14,6 +14,7 @@ __all__ = [
     "LoadEAStage",
     "InjectOnTesterStage",
     "InjectSafetyStage",
+    "CompileStage",
 ]
 
 
@@ -28,4 +29,7 @@ def __getattr__(name: str):
     if name == "InjectSafetyStage":
         from ea_stress.stages.s01c_inject_safety import InjectSafetyStage
         return InjectSafetyStage
+    if name == "CompileStage":
+        from ea_stress.stages.s02_compile import CompileStage
+        return CompileStage
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
