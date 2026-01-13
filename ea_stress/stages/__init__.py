@@ -28,6 +28,7 @@ __all__ = [
     "GenerateReportsStage",
     "StressScenariosStage",
     "ForwardWindowsStage",
+    "MultiPairStage",
 ]
 
 
@@ -84,4 +85,7 @@ def __getattr__(name: str):
     if name == "ForwardWindowsStage":
         from ea_stress.stages.s13_forward_windows import ForwardWindowsStage
         return ForwardWindowsStage
+    if name == "MultiPairStage":
+        from ea_stress.stages.s14_multi_pair import MultiPairStage
+        return MultiPairStage
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
