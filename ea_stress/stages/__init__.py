@@ -18,6 +18,7 @@ __all__ = [
     "ExtractParamsStage",
     "AnalyzeParamsStage",
     "ValidateTradesStage",
+    "FixEAStage",
 ]
 
 
@@ -44,4 +45,7 @@ def __getattr__(name: str):
     if name == "ValidateTradesStage":
         from ea_stress.stages.s05_validate_trades import ValidateTradesStage
         return ValidateTradesStage
+    if name == "FixEAStage":
+        from ea_stress.stages.s05b_fix_ea import FixEAStage
+        return FixEAStage
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
