@@ -129,7 +129,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 2. Core Domain | 1/1 | Complete | 2026-01-11 |
 | 3. MT5 Abstraction | 1/1 | Complete | 2026-01-12 |
 | 4. Stage Framework | 5/5 | Complete | 2026-01-12 |
-| 5. Remaining Stages | 0/TBD | Not started | - |
+| 5. Remaining Stages | 1/7 | In progress | - |
 | 6. Pipeline & Runner | 0/TBD | Not started | - |
 | 7. Compatibility Shim | 0/TBD | Not started | - |
 | 8. Validation & Migration | 0/TBD | Not started | - |
