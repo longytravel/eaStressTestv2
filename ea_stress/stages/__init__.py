@@ -25,6 +25,7 @@ __all__ = [
     "SelectPassesStage",
     "BacktestPassesStage",
     "MonteCarloStage",
+    "GenerateReportsStage",
 ]
 
 
@@ -72,4 +73,7 @@ def __getattr__(name: str):
     if name == "MonteCarloStage":
         from ea_stress.stages.s10_monte_carlo import MonteCarloStage
         return MonteCarloStage
+    if name == "GenerateReportsStage":
+        from ea_stress.stages.s11_generate_reports import GenerateReportsStage
+        return GenerateReportsStage
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
