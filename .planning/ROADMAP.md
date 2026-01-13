@@ -26,7 +26,7 @@ None (internal Python project, no external domain skills needed)
 - [x] **Phase 2: Core Domain** - Build pure Python domain models (params, metrics, state)
 - [x] **Phase 3: MT5 Abstraction** - Build MT5 interface with dry-run capability
 - [x] **Phase 4: Stage Framework** - Create stage interface and implement first stages (1-5)
-- [ ] **Phase 5: Remaining Stages** - Complete stages 6-14 *(Next)*
+- [x] **Phase 5: Remaining Stages** - Complete stages 6-14
 - [ ] **Phase 6: Pipeline & Runner** - Build thin orchestrator
 - [ ] **Phase 7: Compatibility Shim** - Legacy API wrapper for skill compatibility
 - [ ] **Phase 8: Validation & Migration** - Prove equivalence, swap systems
@@ -129,7 +129,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 2. Core Domain | 1/1 | Complete | 2026-01-11 |
 | 3. MT5 Abstraction | 1/1 | Complete | 2026-01-12 |
 | 4. Stage Framework | 5/5 | Complete | 2026-01-12 |
-| 5. Remaining Stages | 6/7 | In progress | - |
+| 5. Remaining Stages | 7/7 | Complete | 2026-01-13 |
 | 6. Pipeline & Runner | 0/TBD | Not started | - |
 | 7. Compatibility Shim | 0/TBD | Not started | - |
 | 8. Validation & Migration | 0/TBD | Not started | - |
