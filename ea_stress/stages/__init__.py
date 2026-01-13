@@ -26,6 +26,8 @@ __all__ = [
     "BacktestPassesStage",
     "MonteCarloStage",
     "GenerateReportsStage",
+    "StressScenariosStage",
+    "ForwardWindowsStage",
 ]
 
 
@@ -76,4 +78,10 @@ def __getattr__(name: str):
     if name == "GenerateReportsStage":
         from ea_stress.stages.s11_generate_reports import GenerateReportsStage
         return GenerateReportsStage
+    if name == "StressScenariosStage":
+        from ea_stress.stages.s12_stress_scenarios import StressScenariosStage
+        return StressScenariosStage
+    if name == "ForwardWindowsStage":
+        from ea_stress.stages.s13_forward_windows import ForwardWindowsStage
+        return ForwardWindowsStage
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
