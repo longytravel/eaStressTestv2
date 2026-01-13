@@ -19,6 +19,8 @@ __all__ = [
     "AnalyzeParamsStage",
     "ValidateTradesStage",
     "FixEAStage",
+    "CreateINIStage",
+    "RunOptimizationStage",
 ]
 
 
@@ -48,4 +50,10 @@ def __getattr__(name: str):
     if name == "FixEAStage":
         from ea_stress.stages.s05b_fix_ea import FixEAStage
         return FixEAStage
+    if name == "CreateINIStage":
+        from ea_stress.stages.s06_create_ini import CreateINIStage
+        return CreateINIStage
+    if name == "RunOptimizationStage":
+        from ea_stress.stages.s07_run_optimization import RunOptimizationStage
+        return RunOptimizationStage
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
